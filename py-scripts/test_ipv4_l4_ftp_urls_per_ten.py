@@ -19,12 +19,17 @@ import datetime
 
 
 class IPV4L4(LFCliBase):
-    def __init__(self, host, port, ssid, security, password, url, requests_per_ten, station_list,
-                 target_requests_per_ten=60, number_template="00000", num_tests=1, radio="wiphy0",
+    def __init__(self, ssid, security, password, url, requests_per_ten, station_list,test_duration="2m",host="localhost", port=8080, 
+                 number_template="00000", num_tests=1, radio="wiphy0", mode=0, ap=None,
                  _debug_on=False, upstream_port="eth1",
                  _exit_on_error=False,
                  _exit_on_fail=False):
-        super().__init__(host, port, _debug=_debug_on, _halt_on_error=_exit_on_error, _exit_on_fail=_exit_on_fail)
+        super().__init__(host, 
+        port, 
+        _debug=_debug_on, 
+        _halt_on_error=_exit_on_error,
+        _local_realm = realm.Realm(lfclient_host=host, lfclient_port=port), 
+        _exit_on_fail=_exit_on_fail)
         self.host = host
         self.port = port
         self.radio = radio
@@ -32,14 +37,16 @@ class IPV4L4(LFCliBase):
         self.ssid = ssid
         self.security = security
         self.password = password
+        self.mode = mode
+        self.ap=ap
         self.url = url
         self.requests_per_ten = requests_per_ten
         self.number_template = number_template
         self.sta_list = station_list
         self.num_tests = num_tests
-        self.target_requests_per_ten = target_requests_per_ten
+        self.target_requests_per_ten = requests_per_ten
+        self.test_duration = test_duration
 
-        self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
         self.station_profile = self.local_realm.new_station_profile()
         self.cx_profile = self.local_realm.new_l4_cx_profile()
 
@@ -48,8 +55,11 @@ class IPV4L4(LFCliBase):
         self.station_profile.ssid_pass = self.password,
         self.station_profile.security = self.security
         self.station_profile.number_template_ = self.number_template
-        self.station_profile.mode = 0
+        self.station_profile.mode = self.mode
+        if self.ap is not None:
+            self.station_profile.set_command_param("add_sta", "ap",self.ap) 
         self.cx_profile.url = self.url
+        print(self.cx_profile.url)
         self.cx_profile.requests_per_ten = self.requests_per_ten
 
         self.port_util = realm.PortUtils(self.local_realm)
@@ -85,11 +95,7 @@ class IPV4L4(LFCliBase):
     def start(self, print_pass=False, print_fail=False):
         self.port_util.set_ftp(port_name=self.local_realm.name_to_eid(self.upstream_port)[2], resource=1, on=True)
         temp_stas = self.sta_list.copy()
-        # temp_stas.append(self.local_realm.name_to_eid(self.upstream_port)[2])
-        cur_time = datetime.datetime.now()
-        interval_time = cur_time + datetime.timedelta(minutes=10)
-        passes = 0
-        expected_passes = 0
+
         self.station_profile.admin_up()
         if self.local_realm.wait_for_ip(temp_stas):
             self._pass("All stations got IPs", print_pass)
@@ -98,11 +104,16 @@ class IPV4L4(LFCliBase):
             exit(1)
         self.cx_profile.start_cx()
         print("Starting test")
+        curr_time = datetime.datetime.now()
+        end_time = self.local_realm.parse_time(self.test_duration) + curr_time
+        sleep_interval = self.local_realm.parse_time(self.test_duration) // 5
+        passes = 0
+        expected_passes = 0
         for test in range(self.num_tests):
             expected_passes += 1
-            while cur_time < interval_time:
-                time.sleep(1)
-                cur_time = datetime.datetime.now()
+            while curr_time < end_time:
+                time.sleep(sleep_interval.total_seconds())
+                curr_time = datetime.datetime.now()
 
             if self.cx_profile.check_errors(self.debug):
                 if self.__check_request_rate():
@@ -113,7 +124,6 @@ class IPV4L4(LFCliBase):
             else:
                 self._fail("FAIL: Errors found getting to %s " % self.url, print_fail)
                 break
-            interval_time = cur_time + datetime.timedelta(minutes=10)
         if passes == expected_passes:
             self._pass("PASS: All tests passes", print_pass)
 
@@ -131,10 +141,8 @@ class IPV4L4(LFCliBase):
 
 def main():
     lfjson_port = 8080
-
     parser = LFCliBase.create_basic_argparse(
         prog='test_ipv4_l4_urls_per_ten',
-        # formatter_class=argparse.RawDescriptionHelpFormatter,
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''\
                 Create layer-4 endpoints to connect to an ftp server and test that urls/s are meeting or exceeding the target rate
@@ -150,22 +158,41 @@ python3 ./test_ipv4_l4_ftp_urls_per_ten.py --upstream_port eth1 \\
     --security {open|wep|wpa|wpa2|wpa3} \\
     --ssid netgear \\
     --passwd admin123 \\
-    --dest 10.40.0.1 \\
-    --test_duration 2m \\
+    --test_duration 2m \\ {2m | 30s | 3h | 1d ...etc}
     --interval 1s \\
+    --mode   1      
+                {"auto"   : "0",
+                "a"      : "1",
+                "b"      : "2",
+                "g"      : "3",
+                "abg"    : "4",
+                "abgn"   : "5",
+                "bgn"    : "6",
+                "bg"     : "7",
+                "abgnAC" : "8",
+                "anAC"   : "9",
+                "an"     : "10",
+                "bgnAC"  : "11",
+                "abgnAX" : "12",
+                "bgnAX"  : "13",
+    --ap "00:0e:8e:78:e1:76"
     --requests_per_ten 600 \\
     --num_tests 1 \\
-    --url "dl http://10.40.0.1 /dev/null" \\
-    --target_per_ten 600 \\
+    --url "ul ftp://lanforge:lanforge@10.40.0.1/example.txt  /home/lanforge/example.txt"
     --debug
             ''')
-
+    optional = parser.add_argument_group('optional arguments')
+    required = parser.add_argument_group('required arguments')
+    required.add_argument('--security', help='WiFi Security protocol: < open | wep | wpa | wpa2 | wpa3 >', required=True)
     parser.add_argument('--requests_per_ten', help='--requests_per_ten number of request per ten minutes', default=600)
+    parser.add_argument('--test_duration', help='--test duration of a single test', default=600)
     parser.add_argument('--num_tests', help='--num_tests number of tests to run. Each test runs 10 minutes', default=1)
     parser.add_argument('--url', help='--url specifies upload/download, address, and dest',
                         default="dl http://10.40.0.1 /dev/null")
-    parser.add_argument('--target_per_ten', help='--target_per_ten target number of request per ten minutes. test will check for 90% of this value',
-                        default=600)
+    optional.add_argument('--mode',help='Used to force mode of stations')
+    optional.add_argument('--ap',help='Used to force a connection to a particular AP')
+    #parser.add_argument('--target_per_ten', help='--target_per_ten target number of request per ten minutes. test will check for 90 percent of this value',
+                        #default=600)
     args = parser.parse_args()
 
     num_sta = 2
@@ -185,9 +212,12 @@ python3 ./test_ipv4_l4_ftp_urls_per_ten.py --upstream_port eth1 \\
                      security=args.security,
                      station_list=station_list,
                      url=args.url,
+                     mode=args.mode,
+                     ap=args.ap,
                      num_tests=args.num_tests,
-                     target_requests_per_ten=args.target_per_ten,
-                     requests_per_ten=args.requests_per_ten)
+                     requests_per_ten=args.requests_per_ten,
+                     test_duration=args.test_duration,
+                     _debug_on=args.debug)
     ip_test.cleanup(station_list)
     ip_test.build()
     ip_test.start()
@@ -198,8 +228,7 @@ python3 ./test_ipv4_l4_ftp_urls_per_ten.py --upstream_port eth1 \\
     time.sleep(30)
     ip_test.cleanup(station_list)
     if ip_test.passes():
-        print("Full test passed, all endpoints met or exceeded 90% of the target rate")
-
+        print("Full test passed, all endpoints met or exceeded 90 percent of the target rate")
 
 if __name__ == "__main__":
     main()

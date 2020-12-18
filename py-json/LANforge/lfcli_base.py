@@ -128,7 +128,7 @@ class LFCliBase:
                 print("sending signal %s to thread %s" % (signum, name))
             # do a thing
 
-    def my_captured_signal(self, signum, frame):
+    def my_captured_signal(self, signum):
         """
         Override me to process signals, otherwise superclass signal handler is called.
         You may use _finish() or _halt() to indicate finishing soon or halting immediately.
@@ -146,7 +146,7 @@ class LFCliBase:
         """
         if self.debug:
             print("Captured signal %s" % signum)
-        if self.my_captured_signal(signum):
+        if my_captured_signal(signum):
             if self.debug:
                 print("subclass processed signal")
         else:
@@ -259,7 +259,6 @@ class LFCliBase:
         #     pprint.pprint(self.proxy)
         json_response = None
         # print("----- GET ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ")
-
         try:
             lf_r = LFRequest.LFRequest(url=self.lfclient_url,
                                        uri=_req_url,
@@ -472,18 +471,21 @@ class LFCliBase:
         else:
             parser = argparse.ArgumentParser()
 
-        parser.add_argument('--mgr',            help='hostname for where LANforge GUI is running', default='localhost')
-        parser.add_argument('--mgr_port',       help='port LANforge GUI HTTP service is running on', default=8080)
-        parser.add_argument('--debug',          help='Enable debugging', default=False, action="store_true")
-        parser.add_argument('--proxy',          nargs='?', default=None, # action=ProxyAction,
+        optional = parser.add_argument_group('optional arguments')
+        required = parser.add_argument_group('required arguments')
+        optional.add_argument('--mgr',            help='hostname for where LANforge GUI is running', default='localhost')
+        optional.add_argument('--mgr_port',       help='port LANforge GUI HTTP service is running on', default=8080)
+        optional.add_argument('--debug',          help='Enable debugging', default=False, action="store_true")
+
+        optional.add_argument('--proxy',          nargs='?', default=None, # action=ProxyAction,
                               help='Connection proxy like http://proxy.localnet:80 or https://user:pass@proxy.localnet:3128')
+
         return parser
 
+    # Create argparse with radio, securiy, ssid and passwd required
+    # TODO: show example of how to add required or optional arguments from calling class
     @staticmethod
-    def create_basic_argparse(prog=None,
-                              formatter_class=None,
-                              epilog=None,
-                              description=None):
+    def create_basic_argparse(prog=None, formatter_class=None, epilog=None, description=None):
         if (prog is not None) or (formatter_class is not None) or (epilog is not None) or (description is not None):
             parser = argparse.ArgumentParser(prog=prog,
                                              formatter_class=formatter_class,
@@ -491,13 +493,19 @@ class LFCliBase:
                                              description=description)
         else:
             parser = argparse.ArgumentParser()
+
         optional = parser.add_argument_group('optional arguments')
         required = parser.add_argument_group('required arguments')
+        #Optional Args
         optional.add_argument('--mgr',            help='hostname for where LANforge GUI is running', default='localhost')
         optional.add_argument('--mgr_port',       help='port LANforge GUI HTTP service is running on', default=8080)
         optional.add_argument('-u', '--upstream_port',
                             help='non-station port that generates traffic: <resource>.<port>, e.g: 1.eth1',
                             default='1.eth1')
+        optional.add_argument('--num_stations',   help='Number of stations to create', default=0)
+        optional.add_argument('--test_id',        help='Test ID (intended to use for ws events)', default="webconsole")
+        optional.add_argument('--debug',          help='Enable debugging', default=False, action="store_true")
+        #Required Args
         required.add_argument('--radio',          help='radio EID, e.g: 1.wiphy2', required=True)
         required.add_argument('--security',       help='WiFi Security protocol: < open | wep | wpa | wpa2 | wpa3 >', required=True)
         required.add_argument('--ssid',           help='SSID for stations to associate to', required=True)
@@ -507,6 +515,8 @@ class LFCliBase:
         optional.add_argument('--debug',          help='Enable debugging', default=False, action="store_true")
         optional.add_argument('--proxy',          nargs='?', default=None,
                               help='Connection proxy like http://proxy.localnet:80 or https://user:pass@proxy.localnet:3128')
+
+
         return parser
 
     # use this function to add an event You can see these events when watching websocket_client at 8081 port
@@ -518,5 +528,22 @@ class LFCliBase:
             "name": name
         }
         self.json_post("/cli-json/add_event", data, debug_=debug_)
+
+    Help_Mode = """Station WiFi modes: use the number value below:
+                auto   : 0,
+                a      : 1,
+                b      : 2,
+                g      : 3,
+                abg    : 4,
+                abgn   : 5,
+                bgn    : 6,
+                bg     : 7,
+                abgnAC : 8,
+                anAC   : 9,
+                an     : 10,
+                bgnAC  : 11,
+                abgnAX : 12,
+                bgnAX  : 13
+"""
 
 # ~class

@@ -294,7 +294,8 @@ class Realm(LFCliBase):
                     if endp_name.startswith(prefix):
                         self.rm_endp(endp_name)
             else:
-                print("cleanup_cxe_prefix no endpoints: endp_list{}".format(endp_list) )
+                if self.debug: 
+                    print("cleanup_cxe_prefix no endpoints: endp_list{}".format(endp_list) )
 
     def channel_freq(self, channel_=0):
         return self.chan_to_freq[channel_]
@@ -1034,6 +1035,51 @@ class L3CXProfile(LFCliBase):
 
     def get_cx_names(self):
         return self.created_cx.keys()
+
+    def get_cx_report(self):
+        self.data = {}
+        for cx_name in self.get_cx_names():
+            self.data[cx_name] = self.json_get("/cx/" + cx_name).get(cx_name)
+        return self.data    
+
+    def monitor(self, duration_sec=60,
+                interval_sec=1,
+                col_names=None,
+                show=True,
+                report_file=None):
+        if (duration_sec is None) or (duration_sec <= 1):
+            raise ValueError("L3CXProfile::monitor wants duration_sec > 1 second")
+        if (interval_sec is None) or (interval_sec < 1):
+            raise ValueError("L3CXProfile::monitor wants interval_sec >= 1 second")
+        if (duration_sec <= interval_sec ):
+            raise ValueError("L3CXProfile::monitor wants duration_sec > interval_sec")
+        if col_names is None:
+            raise ValueError("L3CXProfile::monitor wants a list of column names to monitor")
+        endps = ",".join(self.created_cx.keys())
+        time_results = {}
+        fields=",".join(col_names)
+        report_fh = None
+        if (report_file is not None) and (report_file != ""):
+            report_fh = open(report_file, "w")
+
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=duration_sec)
+
+        while datetime.datetime.now() < end_time_d:
+            response = self.json_get("/endp/%s?fields=%s" % (endps, fields), debug_=self.debug)
+            if "endpoint" not in response:
+                pprint.pprint(response)
+                raise ValueError("no endpoint?")
+            value_map = {}
+            if show:
+                print("Show stuff here")
+
+            if datetime.datetime.now() > end_time_d:
+                break;
+            time.sleep(interval_sec)
+        if report_fh is not None:
+            report_fh.close()
+
 
     def refresh_cx(self):
         for cx_name in self.created_cx.keys():
@@ -2297,8 +2343,8 @@ class TestGroupProfile(LFCliBase):
         self.local_realm.json_post("/cli-json/rm_tgcx", {"tgname": self.group_name, "cxname": cx_name})
 
     def check_group_exists(self):
-        test_groups = self.local_realm.json_get("/testgroups")
-        if test_groups is not None:
+        test_groups = self.local_realm.json_get("/testgroups/all")
+        if test_groups is not None and "groups" in test_groups:
             test_groups = test_groups["groups"]
             for group in test_groups:
                 for k,v in group.items():
@@ -2435,68 +2481,69 @@ class FIOEndpProfile(LFCliBase):
                 self.json_post(req_url, data)
                 #pprint(data)
 
-    def create(self, ports=[], sleep_time=.5, debug_=False, suppress_related_commands_=None):
+    def create(self, ports=[], connections_per_port=1, sleep_time=.5, debug_=False, suppress_related_commands_=None):
         cx_post_data = []
         for port_name in ports:
-            if len(self.local_realm.name_to_eid(port_name)) == 3:
-                shelf = self.local_realm.name_to_eid(port_name)[0]
-                resource = self.local_realm.name_to_eid(port_name)[1]
-                name = self.local_realm.name_to_eid(port_name)[2]
-            else:
-                raise ValueError("Unexpected name for port_name %s" % port_name)
-            if self.directory is None or self.server_mount is None or self.fs_type is None:
-                raise ValueError("directory [%s], server_mount [%s], and type [%s] must not be None" % (self.directory, self.server_mount, self.fs_type))
-            endp_data = {
-                "alias": self.cx_prefix + name + "_fio",
-                "shelf": shelf,
-                "resource": resource,
-                "port": name,
-                "type": self.fs_type,
-                "min_read_rate": self.min_read_rate_bps,
-                "max_read_rate": self.max_read_rate_bps,
-                "min_write_rate": self.min_write_rate_bps,
-                "max_write_rate": self.max_write_rate_bps,
-                "directory": self.directory,
-                "server_mount": self.server_mount,
-                "mount_dir": self.mount_dir,
-                "prefix": self.file_prefix,
-                "payload_pattern": self.pattern,
+            for num_connection in range(connections_per_port):
+                if len(self.local_realm.name_to_eid(port_name)) == 3:
+                    shelf = self.local_realm.name_to_eid(port_name)[0]
+                    resource = self.local_realm.name_to_eid(port_name)[1]
+                    name = self.local_realm.name_to_eid(port_name)[2]
+                else:
+                    raise ValueError("Unexpected name for port_name %s" % port_name)
+                if self.directory is None or self.server_mount is None or self.fs_type is None:
+                    raise ValueError("directory [%s], server_mount [%s], and type [%s] must not be None" % (self.directory, self.server_mount, self.fs_type))
+                endp_data = {
+                    "alias": self.cx_prefix + name + "_" + str(num_connection) + "_fio" ,
+                    "shelf": shelf,
+                    "resource": resource,
+                    "port": name,
+                    "type": self.fs_type,
+                    "min_read_rate": self.min_read_rate_bps,
+                    "max_read_rate": self.max_read_rate_bps,
+                    "min_write_rate": self.min_write_rate_bps,
+                    "max_write_rate": self.max_write_rate_bps,
+                    "directory": self.directory,
+                    "server_mount": self.server_mount,
+                    "mount_dir": self.mount_dir,
+                    "prefix": self.file_prefix,
+                    "payload_pattern": self.pattern,
 
-            }
-            # Read direction is copy of write only directory
-            if self.io_direction == "read":
-                endp_data["prefix"] = "wo_" + name + "_fio"
-                endp_data["directory"] = "/mnt/lf/wo_" + name + "_fio"
+                }
+                # Read direction is copy of write only directory
+                if self.io_direction == "read":
+                    endp_data["prefix"] = "wo_" + name + "_" + str(num_connection) + "_fio"
+                    endp_data["directory"] = "/mnt/lf/wo_" + name + "_" + str(num_connection) + "_fio"
 
-            url = "cli-json/add_file_endp"
-            self.local_realm.json_post(url, endp_data, debug_=True, suppress_related_commands_=suppress_related_commands_)
-            time.sleep(sleep_time)
+                url = "cli-json/add_file_endp"
+                self.local_realm.json_post(url, endp_data, debug_=False, suppress_related_commands_=suppress_related_commands_)
+                time.sleep(sleep_time)
 
-            data = {
-                "name": self.cx_prefix + name + "_fio",
-                "io_direction": self.io_direction,
-                "num_files": 5
-            }
-            self.local_realm.json_post("cli-json/set_fe_info", data, debug_=debug_,
-                                       suppress_related_commands_=suppress_related_commands_)
+                data = {
+                    "name": self.cx_prefix + name + "_" + str(num_connection) + "_fio" ,
+                    "io_direction": self.io_direction,
+                    "num_files": 5
+                }
+                self.local_realm.json_post("cli-json/set_fe_info", data, debug_=debug_,
+                                           suppress_related_commands_=suppress_related_commands_)
 
         self.local_realm.json_post("/cli-json/nc_show_endpoints", {"endpoint": "all"})
         for port_name in ports:
-            if len(self.local_realm.name_to_eid(port_name)) == 3:
-                shelf = self.local_realm.name_to_eid(port_name)[0]
-                resource = self.local_realm.name_to_eid(port_name)[1]
-                name = self.local_realm.name_to_eid(port_name)[2]
+            for num_connection in range(connections_per_port):
+                if len(self.local_realm.name_to_eid(port_name)) == 3:
+                    shelf = self.local_realm.name_to_eid(port_name)[0]
+                    resource = self.local_realm.name_to_eid(port_name)[1]
+                    name = self.local_realm.name_to_eid(port_name)[2]
 
-            endp_data = {
-                "alias": "CX_" + self.cx_prefix + name + "_fio",
-                "test_mgr": "default_tm",
-                "tx_endp": self.cx_prefix + name + "_fio",
-                "rx_endp": "NA"
-            }
-            cx_post_data.append(endp_data)
-            self.created_cx[self.cx_prefix + name + "_fio"] = "CX_" + self.cx_prefix + name + "_fio"
+                endp_data = {
+                    "alias": "CX_" + self.cx_prefix + name + "_" + str(num_connection) + "_fio" ,
+                    "test_mgr": "default_tm",
+                    "tx_endp": self.cx_prefix + name + "_" + str(num_connection) + "_fio" ,
+                    "rx_endp": "NA"
+                }
+                cx_post_data.append(endp_data)
+                self.created_cx[self.cx_prefix + name + "_" + str(num_connection) + "_fio" ] = "CX_" + self.cx_prefix + name + "_" + str(num_connection) + "_fio"
 
-            # time.sleep(3)
         for cx_data in cx_post_data:
             url = "/cli-json/add_cx"
             self.local_realm.json_post(url, cx_data, debug_=debug_, suppress_related_commands_=suppress_related_commands_)
@@ -3224,7 +3271,8 @@ class StationProfile:
         if self.use_ht160:
             self.desired_add_sta_flags.append("ht160_enable")
             self.desired_add_sta_flags_mask.append("ht160_enable")
-        self.add_sta_data["mode"] = self.mode
+        if self.mode is not None:
+            self.add_sta_data["mode"] = self.mode
         if use_radius:
             self.desired_add_sta_flags.append("8021x_radius")
             self.desired_add_sta_flags_mask.append("8021x_radius")
@@ -3263,9 +3311,9 @@ class StationProfile:
 
         # these are unactivated LFRequest objects that we can modify and
         # re-use inside a loop, reducing the number of object creations
-        add_sta_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/add_sta")
-        set_port_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_port")
-        wifi_extra_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_wifi_extra")
+        add_sta_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/add_sta", debug_=debug)
+        set_port_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_port",debug_=debug)
+        wifi_extra_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_wifi_extra",debug_=debug)
         my_sta_names = []
         #add radio here
         if (num_stations > 0) and (len(sta_names_) < 1):
@@ -3329,7 +3377,7 @@ class StationProfile:
                 continue
 
             # print("- 3264 - ## %s ##  add_sta_r.jsonPost - - - - - - - - - - - - - - - - - - "%eidn)
-            json_response = add_sta_r.jsonPost(debug)
+            json_response = add_sta_r.jsonPost(debug=self.debug)
             finished_sta.append(eidn)
             # print("- ~3264 - %s - add_sta_r.jsonPost - - - - - - - - - - - - - - - - - - "%eidn)
             time.sleep(0.01)

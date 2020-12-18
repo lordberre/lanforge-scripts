@@ -154,6 +154,8 @@ Command example:
     --passwd BLANK 
     --debug
             ''')
+    required = parser.add_argument_group('required arguments')
+    required.add_argument('--security', help='WiFi Security protocol: < open | wep | wpa | wpa2 | wpa3 >', required=True)
 
     args = parser.parse_args()
     #if args.debug:

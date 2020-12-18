@@ -11,7 +11,6 @@ if 'py-json' not in sys.path:
 
 import argparse
 from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
 from LANforge import LFUtils
 import realm
 import time
@@ -19,7 +18,7 @@ import datetime
 
 
 class IPV4L4(LFCliBase):
-    def __init__(self, host, port, ssid, security, password, url, requests_per_ten, station_list,
+    def __init__(self,  ssid, security, password, url, requests_per_ten, station_list, host="localhost", port=8080,test_duration="2m",ap=None,mode=0,
                  target_requests_per_ten=60, number_template="00000", num_tests=1, radio="wiphy0",
                  _debug_on=False, upstream_port="eth1",
                  _exit_on_error=False,
@@ -33,8 +32,11 @@ class IPV4L4(LFCliBase):
         self.security = security
         self.password = password
         self.url = url
+        self.mode=mode
+        self.ap=ap
         self.requests_per_ten = int(requests_per_ten)
         self.number_template = number_template
+        self.test_duration=test_duration
         self.sta_list = station_list
         self.num_tests = int(num_tests)
         self.target_requests_per_ten = int(target_requests_per_ten)
@@ -48,7 +50,10 @@ class IPV4L4(LFCliBase):
         self.station_profile.ssid_pass = self.password,
         self.station_profile.security = self.security
         self.station_profile.number_template_ = self.number_template
-        self.station_profile.mode = 0
+        self.station_profile.mode = self.mode
+        if self.ap is not None:
+            self.station_profile.set_command_param("add_sta", "ap",self.ap) 
+
         self.cx_profile.url = self.url
         self.cx_profile.requests_per_ten = self.requests_per_ten
 
@@ -83,10 +88,7 @@ class IPV4L4(LFCliBase):
     def start(self, print_pass=False, print_fail=False):
         temp_stas = self.sta_list.copy()
         # temp_stas.append(self.local_realm.name_to_eid(self.upstream_port)[2])
-        cur_time = datetime.datetime.now()
-        interval_time = cur_time + datetime.timedelta(minutes=2)
-        passes = 0
-        expected_passes = 0
+
         self.station_profile.admin_up()
         if self.local_realm.wait_for_ip(temp_stas):
             self._pass("All stations got IPs", print_pass)
@@ -95,12 +97,18 @@ class IPV4L4(LFCliBase):
             exit(1)
         self.cx_profile.start_cx()
         print("Starting test")
+        curr_time = datetime.datetime.now()
+        end_time = self.local_realm.parse_time(self.test_duration) + curr_time
+        sleep_interval = self.local_realm.parse_time(self.test_duration) // 5
+        passes = 0
+        expected_passes = 0
         for test in range(self.num_tests):
             expected_passes += 1
-            while cur_time < interval_time:
-                time.sleep(1)
-                print(".",end="")
-                cur_time = datetime.datetime.now()
+            while curr_time < end_time:
+                time.sleep(sleep_interval.total_seconds())
+                if self.debug:
+                    print(".",end="")
+                curr_time = datetime.datetime.now()
 
             if self.cx_profile.check_errors(self.debug):
                 if self.__check_request_rate():
@@ -111,7 +119,7 @@ class IPV4L4(LFCliBase):
             else:
                 self._fail("FAIL: Errors found getting to %s " % self.url, print_fail)
                 break
-            interval_time = cur_time + datetime.timedelta(minutes=2)
+            #interval_time = cur_time + datetime.timedelta(minutes=2)
         if passes == expected_passes:
             self._pass("PASS: All tests passes", print_pass)
 
@@ -127,39 +135,56 @@ class IPV4L4(LFCliBase):
 
 
 def main():
-    lfjson_port = 8080
-
     parser = LFCliBase.create_basic_argparse(
         prog='test_ipv4_l4_urls_per_ten',
-        # formatter_class=argparse.RawDescriptionHelpFormatter,
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''\
             Create layer-4 endpoints to connect to a url and test that urls/s are meeting or exceeding the target rate
                 ''',
-
         description='''\
     test_ipv4_l4_urls_per_ten.py:
 --------------------
 Generic command example:
-python3 ./test_ipv4_l4_urls_per_ten.py --upstream_port eth1 \\
+python3 ./test_ipv4_l4_urls_per_ten.py 
+    --upstream_port eth1 \\
     --radio wiphy0 \\
     --num_stations 3 \\
     --security {open|wep|wpa|wpa2|wpa3} \\
     --ssid netgear \\
     --passwd admin123 \\
     --requests_per_ten 600 \\
+    --mode   1      
+                {"auto"   : "0",
+                "a"      : "1",
+                "b"      : "2",
+                "g"      : "3",
+                "abg"    : "4",
+                "abgn"   : "5",
+                "bgn"    : "6",
+                "bg"     : "7",
+                "abgnAC" : "8",
+                "anAC"   : "9",
+                "an"     : "10",
+                "bgnAC"  : "11",
+                "abgnAX" : "12",
+                "bgnAX"  : "13",
     --num_tests 1 \\
     --url "dl http://10.40.0.1 /dev/null" \\
+    --ap "00:0e:8e:78:e1:76"
     --target_per_ten 600 \\
+    --test_duration 2m
     --debug
             ''')
-
+    required = parser.add_argument_group('required arguments')
+    optional = parser.add_argument_group('optional arguments')
+    required.add_argument('--security', help='WiFi Security protocol: < open | wep | wpa | wpa2 | wpa3 >', required=True)
     parser.add_argument('--requests_per_ten', help='--requests_per_ten number of request per ten minutes', default=600)
     parser.add_argument('--num_tests', help='--num_tests number of tests to run. Each test runs 10 minutes', default=1)
-    parser.add_argument('--url', help='--url specifies upload/download, address, and dest',
-                        default="dl http://10.40.0.1 /dev/null")
-    parser.add_argument('--target_per_ten', help='--target_per_ten target number of request per ten minutes. test will check for 90% this value',
-                        default=600)
+    parser.add_argument('--url', help='--url specifies upload/download, address, and dest',default="dl http://10.40.0.1 /dev/null")
+    parser.add_argument('--test_duration', help='duration of test',default="2m")
+    parser.add_argument('--target_per_ten', help='--target_per_ten target number of request per ten minutes. test will check for 90 percent this value',default=600)
+    optional.add_argument('--mode',help='Used to force mode of stations')
+    optional.add_argument('--ap',help='Used to force a connection to a particular AP')
     args = parser.parse_args()
 
     num_sta = 2
@@ -179,6 +204,9 @@ python3 ./test_ipv4_l4_urls_per_ten.py --upstream_port eth1 \\
                      security=args.security,
                      station_list=station_list,
                      url=args.url,
+                     mode=args.mode,
+                     ap=args.ap,
+                     test_duration=args.test_duration,
                      num_tests=args.num_tests,
                      target_requests_per_ten=args.target_per_ten,
                      requests_per_ten=args.requests_per_ten)
@@ -192,7 +220,7 @@ python3 ./test_ipv4_l4_urls_per_ten.py --upstream_port eth1 \\
     time.sleep(30)
     ip_test.cleanup(station_list)
     if ip_test.passes():
-        print("Full test passed, all endpoints met or exceeded 90% of the target rate")
+        print("Full test passed, all endpoints met or exceeded 90 percent of the target rate")
 
 
 if __name__ == "__main__":
