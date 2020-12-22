@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-import sys
 import os
+import sys
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
@@ -15,6 +15,8 @@ from LANforge.lfcli_base import LFCliBase
 from LANforge import LFUtils
 import realm
 import time
+import math
+import pprint
 import datetime
 
 
@@ -37,6 +39,7 @@ class IPV6VariableTime(LFCliBase):
                  _test_duration="5m",
                  _use_ht160=False,
                  _cx_type=None,
+                 _first_sta=None,
                  _debug_on=False,
                  _exit_on_error=False,
                  _exit_on_fail=False):
@@ -78,10 +81,12 @@ class IPV6VariableTime(LFCliBase):
         self.cx_profile.host = _host
         self.cx_profile.port = _port
         self.cx_profile.name_prefix = _name_prefix
+        self.cx_profile.first_sta = _first_sta
         self.cx_profile.side_a_min_bps = _side_a_min_rate
         self.cx_profile.side_a_max_bps = _side_a_max_rate
         self.cx_profile.side_b_min_bps = _side_b_min_rate
         self.cx_profile.side_b_max_bps = _side_b_max_rate
+
 
     def __get_rx_values(self):
         cx_list = self.json_get("endp?fields=name,rx+bytes", debug_=self.debug)
@@ -156,11 +161,29 @@ class IPV6VariableTime(LFCliBase):
         self.station_profile.admin_down()
 
     def pre_cleanup(self):
-        self.cx_profile.cleanup_prefix()
-        for sta in self.sta_list:
+        print("pre_cleanup")
+        zta_list = self.sta_list
+        if isinstance(self.sta_list, dict):
+            zta_list=[]
+            for radio,stations in self.sta_list.items():
+                zta_list = zta_list + stations
+
+        # self.cx_profile.cleanup_prefix()
+        print("sta_list")
+        pprint.pprint(self.sta_list)
+        for sta in zta_list:
+            print("station %s" % sta)
+            if isinstance(sta, list) or isinstance(sta, dict):
+                pprint.pprint(sta)
+                raise ValueError("Misconfigured list: %s" % zta_list )
             self.local_realm.rm_port(sta, check_exists=True, debug_=self.debug)
+
+        if self.debug:
+            print("zta_list....")
+            pprint.pprint(zta_list)
+            print("wait until disappear")
         LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url,
-                                           port_list=self.sta_list,
+                                           port_list=zta_list,
                                            debug=self.debug)
 
     def cleanup(self):
@@ -171,14 +194,20 @@ class IPV6VariableTime(LFCliBase):
                                            debug=self.debug)
 
     def build(self):
-
         self.station_profile.use_security(self.security, self.ssid, self.password)
         self.station_profile.set_number_template(self.number_template)
         print("Creating stations")
         self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
         self.station_profile.set_command_param("set_port", "report_timer", 1500)
         self.station_profile.set_command_flag("set_port", "rpt_timer", 1)
-        self.station_profile.create(radio=self.radio, sta_names_=self.sta_list, debug=self.debug)
+        # todo use first_sta= argument
+        radio_list = [ self.radio ]
+        if self.radio.find(","):
+            radio_list = self.radio.split(",")
+        for radio in radio_list:
+            self.station_profile.create(radio=radio,
+                                        sta_names_=self.sta_list[radio],
+                                        debug=self.debug)
         self.cx_profile.create(endp_type=self.cx_type, side_a=self.station_profile.station_names, side_b=self.upstream,
                                sleep_time=0)
         self._pass("PASS: Station build finished")
@@ -204,7 +233,7 @@ Generic command example:
     --passwd admin123 \\
     --upstream 10.40.0.1 \\
     --test_duration 2m \\
-    --interval 1s \\
+    --monitor_interval 1s \\
     --a_min 256000 \\
     --b_min 256000 \\
     --debug
@@ -230,6 +259,7 @@ Generic command example:
         optional_args.add_argument('--ap',      help='Used to force a connection to a particular AP')
         optional_args.add_argument("--a_max",   help="Maximum side_a bps speed", default=0)
         optional_args.add_argument("--b_max",   help="Maximum side_b bps speed", default=0)
+        optional_args.add_argument("--first_sta", help="begins the station name series with this number")
 
     args = parser.parse_args()
 
@@ -243,13 +273,36 @@ Generic command example:
     if args.cx_type == "udp6":
         args.cx_type = "lf_udp6"
 
-    num_sta = 2
-    if (args.num_stations is not None) and (int(args.num_stations) > 0):
-        num_stations_converted = int(args.num_stations)
-        num_sta = num_stations_converted
 
-    station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=num_sta-1, padding_number_=10000,
-                                          radio=args.radio)
+    radio_list = [args.radio]
+    if args.radio.find(",") > 1:
+        radio_list = args.radio.split(",")
+
+    num_sta = len(radio_list)
+    if args.num_stations is not None:
+        if (type(args.num_stations) == int) or isinstance(args.num_stations, int):
+            num_sta = math.floor(args.num_stations / len(radio_list))
+        else:
+            if (args.num_stations.endswith("/r")):
+                hunk = args.num_stations[0, args.num_stations.find("/")]
+                num_sta = int(hunk)
+            else:
+                try:
+                    num_sta = int(args.num_stations)
+                    num_sta = math.floor(num_sta / len(radio_list))
+                except:
+                    raise ValueError("Unable to convert num_stations %s into %s sta per radio" % (args.num_stations, len(radio_list)))
+
+    start_id=0
+    station_list = {}
+    for radio in radio_list:
+        print("start_id %s end_id %s radio %s" % (start_id, (num_sta-1), radio))
+        station_list[radio] = LFUtils.port_name_series(prefix="sta",
+                                                       start_id=start_id,
+                                                       end_id=start_id + num_sta - 1,
+                                                       padding_number=10000,
+                                                       radio=radio)
+        start_id += 1000
 
     ip_var_test = IPV6VariableTime(_host=args.mgr,
                                    _port=args.mgr_port,
@@ -268,6 +321,7 @@ Generic command example:
                                    _side_a_max_rate=args.a_max,
                                    _side_b_max_rate=args.b_max,
                                    _cx_type=args.cx_type,
+                                   _first_sta=args.first_sta,
                                    _debug_on=args.debug)
 
     ip_var_test.pre_cleanup()

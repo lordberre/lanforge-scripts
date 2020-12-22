@@ -286,7 +286,9 @@ def port_name_series(prefix="sta", start_id=0, end_id=1, padding_number=10000, r
         eid = name_to_eid(radio)
     
     name_list = []
+
     for i in range((padding_number + start_id), (padding_number + end_id + 1)):
+
         sta_name = "%s%s" % (prefix, str(i)[1:])
         if eid is None:
             name_list.append(sta_name)
@@ -443,7 +445,7 @@ def waitUntilPortsDisappear(base_url="http://localhost:8080", port_list=[], debu
     wait_until_ports_disappear(base_url, port_list, debug)
 
 def wait_until_ports_disappear(base_url="http://localhost:8080", port_list=[], debug=False):
-    print("Waiting until ports disappear...")
+    print("LFUtils: Waiting until ports disappear...")
     url = "/port/1"
     if isinstance(port_list, list):
         found_stations = port_list.copy()
@@ -462,10 +464,19 @@ def wait_until_ports_disappear(base_url="http://localhost:8080", port_list=[], d
             if debug:
                 print("checking:" + check_url)
             lf_r = LFRequest.LFRequest(base_url, check_url)
-            json_response = lf_r.get_as_json(debug_=debug)
+            try:
+                json_response = lf_r.get_as_json(debug_=debug)
+            except HTTPError as he:
+                print( "NO STATION AT "+check_url)
+                continue
+            pprint.pprint(json_response)
             if (json_response != None):
                 found_stations.append(port_name)
+            else:
+                print ("URL was NONE: "+check_url)
+
         if len(found_stations) > 0:
+            print("Found %s stations: %s" % (len(found_stations), ",".join(found_stations)))
             sleep(1)
     sleep(1) # safety
     return
@@ -486,7 +497,7 @@ def name_to_eid(input):
     info = []
     if (input is None) or (input == ""):
         raise ValueError("name_to_eid wants eid like 1.1.sta0 but given[%s]" % input)
-    
+
     info = input.split('.')
     if len(info) == 1:
         rv[2] = info[0]; # just port name

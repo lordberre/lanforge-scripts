@@ -994,12 +994,23 @@ class MULTICASTProfile(LFCliBase):
 
 
 class L3CXProfile(LFCliBase):
-    def __init__(self, lfclient_host, lfclient_port, local_realm,
-                 side_a_min_bps=None, side_b_min_bps=None,
-                 side_a_max_bps=0, side_b_max_bps=0,
-                 side_a_min_pdu=-1, side_b_min_pdu=-1,
-                 side_a_max_pdu=0, side_b_max_pdu=0,
-                 report_timer_=3000, name_prefix_="Unset", number_template_="00000", debug_=False):
+    def __init__(self,
+                 lfclient_host,
+                 lfclient_port,
+                 local_realm,
+                 side_a_min_bps=None,
+                 side_b_min_bps=None,
+                 side_a_max_bps=0,
+                 side_b_max_bps=0,
+                 side_a_min_pdu=-1,
+                 side_b_min_pdu=-1,
+                 side_a_max_pdu=0,
+                 side_b_max_pdu=0,
+                 report_timer_=3000,
+                 name_prefix_="Unset",
+                 number_template_="00000",
+                 first_sta_=None,
+                 debug_=False):
         """
         :param lfclient_host:
         :param lfclient_port:
@@ -1029,6 +1040,7 @@ class L3CXProfile(LFCliBase):
         self.side_a_max_bps = side_a_max_bps
         self.side_b_max_bps = side_b_max_bps
         self.report_timer = report_timer_
+        self.first_sta = first_sta_
         self.created_cx = {}
         self.created_endp = {}
         self.name_prefix = name_prefix_
@@ -1073,7 +1085,8 @@ class L3CXProfile(LFCliBase):
         else:
             return False
 
-    def monitor(self,duration_sec=60,
+    def monitor(self,
+                duration_sec=60,
                 interval_sec=1,
                 col_names=None,
                 created_cx=None,
@@ -1103,7 +1116,7 @@ class L3CXProfile(LFCliBase):
             except:
                 print('Please format your col_names variable like the following:')
         #Step 2, column names
-        fields=",".join(col_names)
+        fields = ",".join(col_names)
         print('fields')
         print(fields)
         #Step 3, create report file
@@ -1116,9 +1129,9 @@ class L3CXProfile(LFCliBase):
         start_time = datetime.datetime.now()
         end_time = start_time + datetime.timedelta(seconds=duration_sec)
 
-
-        print('endpoints')
-        print(endps)
+        if (self.debug):
+            print('endpoints')
+            print(endps)
         value_map = dict()
         passes = 0
         expected_passes = 0
@@ -1179,7 +1192,6 @@ class L3CXProfile(LFCliBase):
         workbook.close()
 
 
-
     def refresh_cx(self):
         for cx_name in self.created_cx.keys():
             self.json_post("/cli-json/show_cxe", {
@@ -1225,7 +1237,14 @@ class L3CXProfile(LFCliBase):
                         print("Cleaning endpoint: %s"%(ename))
                     self.local_realm.rm_endp(self.created_cx[cx_name][side])
 
-    def create(self, endp_type, side_a, side_b, sleep_time=0.03, suppress_related_commands=None, debug_=False, tos=None):
+    def create(self,
+               endp_type,
+               side_a,
+               side_b,
+               sleep_time=0.03,
+               suppress_related_commands=None,
+               debug_=False,
+               tos=None):
         if self.debug:
             debug_=True
 
@@ -3199,14 +3218,23 @@ class StationProfile:
         self.wifi_extra_data["network_auth_type"] = network_auth_type
         self.wifi_extra_data["anqp_3gpp_cell_net"] = anqp_3gpp_cell_net
 
-    def set_reset_extra(self, reset_port_enable=False, test_duration=0, reset_port_min_time=0, reset_port_max_time=0,
-                        reset_port_timer_start=False, port_to_reset=0, time_till_reset=0):
+    def set_reset_extra(self,
+                        reset_port_enable=False,
+                        test_duration=0,
+                        reset_port_min_time=0,
+                        reset_port_max_time=0,
+                        reset_port_timer_start=False,
+                        port_to_reset=0,
+                        time_till_reset=0):
         self.reset_port_extra_data["reset_port_enable"] = reset_port_enable
         self.reset_port_extra_data["test_duration"] = test_duration
         self.reset_port_extra_data["reset_port_time_min"] = reset_port_min_time
         self.reset_port_extra_data["reset_port_time_max"] = reset_port_max_time
 
-    def use_security(self, security_type, ssid=None, passwd=None):
+    def use_security(self,
+                     security_type,
+                     ssid=None,
+                     passwd=None):
         types = {"wep": "wep_enable", "wpa": "wpa_enable", "wpa2": "wpa2_enable", "wpa3": "use-wpa3", "open": "[BLANK]"}
         self.add_sta_data["ssid"] = ssid
         if security_type in types.keys():
@@ -3331,6 +3359,7 @@ class StationProfile:
         for sta_name in self.station_names:
             self.local_realm.admin_down(sta_name)
 
+    # TODO: add radio= parameter to limit cleanup to one+ specified radios
     def cleanup(self, desired_stations=None, delay=0.03, debug_=False):
         print("Cleaning up stations")
 
@@ -3346,11 +3375,12 @@ class StationProfile:
             self.local_realm.rm_port(port_eid, check_exists=True, debug_=debug_)
 
         # And now see if they are gone
-        LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url,  port_list=desired_stations)
+        LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url, port_list=desired_stations)
 
 
     # Checks for errors in initialization values and creates specified number of stations using init parameters
-    def create(self, radio,
+    def create(self,
+               radio=None,
                num_stations=0,
                sta_names_=None,
                dry_run=False,
