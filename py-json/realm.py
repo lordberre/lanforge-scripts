@@ -11,7 +11,7 @@ from LANforge import add_dut
 from LANforge import lfcli_base
 from LANforge import add_vap
 from LANforge.lfcli_base import LFCliBase
-#from generic_cx import GenericCx
+from generic_cx import GenericCx
 from LANforge import add_monitor
 from LANforge.add_monitor import *
 import os
@@ -19,7 +19,6 @@ import datetime
 import base64
 import xlsxwriter
 import pandas as pd
-
 
 def wpa_ent_list():
     return [
@@ -640,6 +639,7 @@ class Realm(LFCliBase):
                         num_sta_with_ips += 1
         return num_sta_with_ips
 
+
     def duration_time_to_seconds(self, time_string):
         if isinstance(time_string, str):
             pattern = re.compile("^(\d+)([dhms]$)")
@@ -880,7 +880,7 @@ class MULTICASTProfile(LFCliBase):
         :param number_template_: how many zeros wide we padd, possibly a starting integer with left padding
         :param debug_:
         """
-        super().__init__(local_realm)
+        super().__init__(lfclient_host, lfclient_port, debug_, _halt_on_error=True)
         self.lfclient_url = "http://%s:%s" % (lfclient_host, lfclient_port)
         self.debug = debug_
         self.local_realm = local_realm
@@ -1063,6 +1063,7 @@ class L3CXProfile(BaseProfile):
         """
         :param lfclient_host:
         :param lfclient_port:
+        :param local_realm:
         :param side_a_min_bps:
         :param side_b_min_bps:
         :param side_a_max_bps:
@@ -1091,8 +1092,6 @@ class L3CXProfile(BaseProfile):
         self.created_endp = {}
         self.name_prefix = name_prefix_
         self.number_template = number_template_
-        self.lfclient_port = lfclient_port
-        self.lfclient_host = lfclient_host
 
     def get_cx_names(self):
         return self.created_cx.keys()
@@ -1132,6 +1131,7 @@ class L3CXProfile(BaseProfile):
                 return False
         else:
             return False
+
     def monitor(self,
                 duration_sec=60,
                 monitor_interval=1,
@@ -1164,16 +1164,13 @@ class L3CXProfile(BaseProfile):
         else:
             output_format = report_file.split('.')[-1]
 
-        # Step 1, column names . what is this for?
-        fields=None
-        if col_names is not None and len(col_names) > 0:
-            fields = ",".join(col_names)
-            header_row=col_names
-        else:
-            header_row=list((list(self.json_get("/endp/all")['endpoint'][0].values())[0].keys()))
+        # Step 1, column names
+        fields=",".join(col_names)
+        # print(fields)
         # Step 2, monitor columns
         start_time = datetime.datetime.now()
         end_time = start_time + datetime.timedelta(seconds=duration_sec)
+        # print(end_time)
 
         value_map = dict()
         passes = 0
@@ -1223,14 +1220,16 @@ class L3CXProfile(BaseProfile):
             itertools.chain.from_iterable(itertools.repeat(x, len(created_cx.split(','))) for x in timestamps))
         for point in range(0, len(endpoints2)):
             endpoints2[point].insert(0, timestamps2[point])
-        # step 4 save and close
-        header_row.insert(0, 'Timestamp')
+        #step 4 save and close
+        header_row=col_names
         print(header_row)
-        if output_format.lower() in ['excel', 'xlsx'] or report_file.split('.')[-1] == 'xlsx':
+        header_row.insert(0,'Timestamp')
+        if output_format.lower() in ['excel','xlsx'] or report_file.split('.')[-1] == 'xlsx':
+            report_fh = open(report_file, "w+")
             workbook = xlsxwriter.Workbook(report_file)
             worksheet = workbook.add_worksheet()
-            for col_num, data in enumerate(header_row):
-                worksheet.write(0, col_num, data)
+            for col_num,data in enumerate(header_row):
+                worksheet.write(0, col_num,data)
             row_num = 1
             for x in endpoints2:
                 for col_num, data in enumerate(x):
@@ -1242,10 +1241,7 @@ class L3CXProfile(BaseProfile):
             df.columns = header_row
             import requests
             import ast
-            try:
-                systeminfo = ast.literal_eval(requests.get('http://'+str(self.lfclient_host)+':'+str(self.lfclient_port)).text)
-            except:
-                systeminfo = ast.literal_eval(requests.get('http://'+str(self.lfclient_host)+':'+str(self.lfclient_port)).text)
+            systeminfo = ast.literal_eval(requests.get('http://'+str(self.lfclient_host)+':'+str(self.lfclient_port)).text)
             df['LFGUI Release'] = systeminfo['VersionInfo']['BuildVersion']
             df['Script Name'] = script_name
             df['Arguments'] = arguments
@@ -1258,9 +1254,11 @@ class L3CXProfile(BaseProfile):
             if output_format == 'png':
                 fig = df.plot().get_figure()
                 fig.savefig(report_file)
+            if output_format == 'html':
+                print('Shivams function')
             if output_format == 'df':
                 return df
-            supported_formats = ['csv', 'json', 'stata', 'pickle','html']
+            supported_formats = ['csv','json','stata','pickle']
             for x in supported_formats:
                 if output_format.lower() == x or report_file.split('.')[-1] == x:
                     exec('df.to_' + x + '("' + report_file + '")')
@@ -1927,7 +1925,7 @@ class GenCXProfile(LFCliBase):
         for endp_tpl in endp_tpls:
             gen_name_a = endp_tpl[2]
             gen_name_b = endp_tpl[3]
-            genl.set_ (gen_name_a, "ClearPortOnStart", 1)
+            genl.set_flags(gen_name_a, "ClearPortOnStart", 1)
             # genl.set_flags(gen_name_b, "ClearPortOnStart", 1)
             # genl.set_flags(gen_name_b, "Unmanaged", 1)
         time.sleep(sleep_time)
@@ -2066,6 +2064,7 @@ class WifiMonitor:
                                        baseurl=self.lfclient_url,
                                        debug=self.debug)
 
+
     def admin_up(self):
         up_request = LFUtils.port_up_request(resource_id=self.resource, port_name=self.monitor_name)
         self.local_realm.json_post("/cli-json/set_port", up_request)
@@ -2087,8 +2086,6 @@ class WifiMonitor:
             "duration": duration_sec
         }
         self.local_realm.json_post("/cli-json/sniff_port", _data=data)
-
-        # "sniff_port 1 %s %s NA %s %s.pcap %i"%(r, m, sflags, m, int(dur))
 
 
 class VAPProfile(LFCliBase):
@@ -2547,6 +2544,7 @@ class VRProfile(LFCliBase):
         else:
             raise ValueError("vr_name must be set. Current name: %s" % self.vr_name)
 
+
     def create(self, resource, upstream_port="eth1", debug=False,
                upstream_subnets="20.20.20.0/24", upstream_nexthop="20.20.20.1",
                local_subnets="10.40.0.0/24", local_nexthop="10.40.3.198",
@@ -2579,38 +2577,38 @@ class VRProfile(LFCliBase):
 class DUTProfile(LFCliBase):
     def __init__(self, lfclient_host, lfclient_port, local_realm, debug_=False):
         super().__init__(lfclient_host, lfclient_port, debug_, _halt_on_error=True, _local_realm=local_realm)
-        self.name = "NA"
-        self.flags = "NA"
-        self.img_file = "NA"
-        self.sw_version = "NA"
-        self.hw_version = "NA"
-        self.model_num = "NA"
-        self.serial_num = "NA"
-        self.serial_port = "NA"
-        self.wan_port = "NA"
-        self.lan_port = "NA"
-        self.ssid1 = "NA"
-        self.ssid2 = "NA"
-        self.ssid3 = "NA"
-        self.passwd1 = "NA"
-        self.passwd2 = "NA"
-        self.passwd3 = "NA"
-        self.mgt_ip = "NA"
-        self.api_id = "NA"
-        self.flags_mask = "NA"
-        self.antenna_count1 = "NA"
-        self.antenna_count2 = "NA"
-        self.antenna_count3 = "NA"
-        self.bssid1 = "NA"
-        self.bssid2 = "NA"
-        self.bssid3 = "NA"
-        self.top_left_x = "NA"
-        self.top_left_y = "NA"
-        self.eap_id = "NA"
-        self.flags = 0
-        self.flags_mask = 0
-        self.notes = []
-        self.append = []
+        self.name            = "NA"
+        self.flags           = "NA"
+        self.img_file        = "NA"
+        self.sw_version      = "NA"
+        self.hw_version      = "NA"
+        self.model_num       = "NA"
+        self.serial_num      = "NA"
+        self.serial_port     = "NA"
+        self.wan_port        = "NA"
+        self.lan_port        = "NA"
+        self.ssid1           = "NA"
+        self.ssid2           = "NA"
+        self.ssid3           = "NA"
+        self.passwd1         = "NA"
+        self.passwd2         = "NA"
+        self.passwd3         = "NA"
+        self.mgt_ip          = "NA"
+        self.api_id          = "NA"
+        self.flags_mask      = "NA"
+        self.antenna_count1  = "NA"
+        self.antenna_count2  = "NA"
+        self.antenna_count3  = "NA"
+        self.bssid1          = "NA"
+        self.bssid2          = "NA"
+        self.bssid3          = "NA"
+        self.top_left_x      = "NA"
+        self.top_left_y      = "NA"
+        self.eap_id          = "NA"
+        self.flags           = 0
+        self.flags_mask      = 0
+        self.notes           = []
+        self.append          = []
 
     def set_param(self, name, value):
         if (name in self.__dict__):
@@ -3115,6 +3113,7 @@ class MACVLANProfile(LFCliBase):
         # And now see if they are gone
         LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url, port_list=self.created_macvlans)
 
+
     def admin_up(self):
         for macvlan in self.created_macvlans:
             self.local_realm.admin_up(macvlan)
@@ -3385,7 +3384,7 @@ class StationProfile:
         self.local_realm = local_realm
         self.use_ht160 = use_ht160
         self.COMMANDS = ["add_sta", "set_port"]
-        self.desired_add_sta_flags = ["wpa2_enable", "80211u_enable", "create_admin_down"]
+        self.desired_add_sta_flags      = ["wpa2_enable", "80211u_enable", "create_admin_down"]
         self.desired_add_sta_flags_mask = ["wpa2_enable", "80211u_enable", "create_admin_down"]
         self.number_template = number_template_
         self.station_names = []  # eids, these are created station names
@@ -3651,6 +3650,7 @@ class StationProfile:
             time.sleep(delay)
         # And now see if they are gone
         LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url, port_list=desired_stations)
+
 
     # Checks for errors in initialization values and creates specified number of stations using init parameters
     def create(self, radio,
