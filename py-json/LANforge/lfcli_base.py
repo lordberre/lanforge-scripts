@@ -605,7 +605,7 @@ class LFCliBase:
 """ 
 
     #================ Pandas Dataframe Functions ======================================
-    import datatable as dt
+   #import datatable as dt
      #takes any dataframe and returns the specified file extension of it
     def df_to_file(self, output_f=None,dataframe=None, save_path=None):
         if output_f.lower() == 'hdf': 

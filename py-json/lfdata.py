@@ -32,8 +32,27 @@ import csv
     #reading data from websockets
 
 class LFDataCollection(LFCliBase):
-    pass
+    def __init__(self,
+                 lfclient_host="localhost",
+                 lfclient_port=8080,
+                 debug_=False,
+                 halt_on_error_=False, # remove me
+                 _exit_on_error=False,
+                 _exit_on_fail=False,
+                 _proxy_str=None,
+                 _capture_signal_list=[]):
+        super().__init__(_lfjson_host=lfclient_host,
+                         _lfjson_port=lfclient_port,
+                         _debug=debug_,
+                         _halt_on_error=halt_on_error_,
+                         _exit_on_error=_exit_on_error,
+                         _exit_on_fail=_exit_on_fail,
+                         _proxy_str=_proxy_str,
+                         _capture_signal_list=_capture_signal_list)
+        self.debug = debug_
+    
 
 
-class WebSocket():
-    pass 
+
+#class WebSocket():
+     

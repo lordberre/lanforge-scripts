@@ -11,8 +11,7 @@ from LANforge import add_dut
 from LANforge import lfcli_base
 from LANforge import add_vap
 from LANforge.lfcli_base import LFCliBase
-from .lfdata import LFDataCollection
-from .lfdata import WebSocket
+from lfdata import LFDataCollection
 from LANforge import add_monitor
 from LANforge.add_monitor import *
 import os
@@ -71,16 +70,7 @@ class Realm(LFCliBase):
                          _exit_on_fail=_exit_on_fail,
                          _proxy_str=_proxy_str,
                          _capture_signal_list=_capture_signal_list)
-        # self.lfclient_url = "http://%s:%s" % (lfclient_host, lfclient_port)
-        super().__init__(lfclient_host,
-                         lfclient_port,
-                         _debug=debug_,
-                         _halt_on_error=halt_on_error_,
-                         _exit_on_error=_exit_on_error,
-                         _exit_on_fail=_exit_on_fail,
-                         # _local_realm=self,
-                         _proxy_str=_proxy_str,
-                         _capture_signal_list=_capture_signal_list)
+
 
         self.debug = debug_
         # if debug_:
