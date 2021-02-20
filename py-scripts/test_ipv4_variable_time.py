@@ -304,7 +304,6 @@ python3 ./test_ipv4_variable_time.py
     if not ip_var_test.passes():
         print(ip_var_test.get_fail_message())
         ip_var_test.exit_fail()
-    ip_var_test.start(False, False)
 
     monitor_interval = Realm.parse_time(args.monitor_interval).total_seconds()
     if args.monitor:
@@ -341,7 +340,7 @@ python3 ./test_ipv4_variable_time.py
             else:
                 output = args.output_format
         print("Saving final report data in ... " + report_f)
-        
+
         compared_rept=None
         if args.compared_report:
             compared_report_format=args.compared_report.split('.')[-1]
@@ -375,7 +374,7 @@ python3 ./test_ipv4_variable_time.py
             print("Port Manager column names are...")
             print(port_mgr_cols)
 
-        #start monitor 
+        ip_var_test.start(False, False)
         ip_var_test.l3cxprofile.monitor(layer3_cols=layer3_cols,
                                     sta_list=station_list,
                                     port_mgr_cols=port_mgr_cols,
@@ -388,6 +387,8 @@ python3 ./test_ipv4_variable_time.py
                                     script_name='test_ipv4_variable_time',
                                     arguments=args,
                                     debug=args.debug)
+    else:
+        ip_var_test.start(False, False)
     ip_var_test.stop()
     if not ip_var_test.passes():
         print(ip_var_test.get_fail_message())
