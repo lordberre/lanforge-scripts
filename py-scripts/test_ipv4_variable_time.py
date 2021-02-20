@@ -42,6 +42,7 @@ class IPV4VariableTime(Realm):
                  port=8080,
                  mode=0,
                  ap=None,
+                 monitor=False,
                  side_a_min_rate=56, side_a_max_rate=0,
                  side_b_min_rate=56, side_b_max_rate=0,
                  number_template="00000", test_duration="5m", use_ht160=False,
@@ -155,8 +156,10 @@ def main():
         {'name': '--compared_report', 'help': 'report path and file which is wished to be compared with new report',
          'default': None})
     optional.append({'name': '--monitor_interval',
-                     'help': 'how frequently do you want your monitor function to take measurements; 250ms, 35s, 2h',
+                     'help': 'frequency of monitor polls - ex: 250ms, 35s, 2h',
                      'default': '2s'})
+    optional.append({'name': '--monitor',
+                     'help': 'whether test data should be recorded and stored in a report'})
     parser = LFCliBase.create_basic_argparse(
         prog='test_ipv4_variable_time.py',
         formatter_class=argparse.RawTextHelpFormatter,
@@ -192,6 +195,7 @@ python3 ./test_ipv4_variable_time.py
     --password admin123
     --test_duration 2m (default)
     --monitor_interval_ms 
+    --monitor 
     --a_min 3000
     --b_min 1000
     --ap "00:0e:8e:78:e1:76"
@@ -370,8 +374,8 @@ python3 ./test_ipv4_variable_time.py
         print(port_mgr_cols)
 
     monitor_interval = Realm.parse_time(args.monitor_interval).total_seconds()
-
-    ip_var_test.l3cxprofile.monitor(layer3_cols=layer3_cols,
+    if args.monitor:
+        ip_var_test.l3cxprofile.monitor(layer3_cols=layer3_cols,
                                     sta_list=station_list,
                                     port_mgr_cols=port_mgr_cols,
                                     report_file=report_f,
