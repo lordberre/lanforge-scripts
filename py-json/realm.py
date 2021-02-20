@@ -59,7 +59,6 @@ class Realm(LFCliBase):
                  halt_on_error_=False, # remove me
                  _exit_on_error=False,
                  _exit_on_fail=False,
-                 # _local_realm=None,
                  _proxy_str=None,
                  _capture_signal_list=[]):
         super().__init__(_lfjson_host=lfclient_host,
@@ -73,9 +72,6 @@ class Realm(LFCliBase):
 
 
         self.debug = debug_
-        # if debug_:
-        #     print("Realm _proxy_str: %s" % _proxy_str)
-        #     pprint(_proxy_str)
         self.check_connect()
         self.chan_to_freq = {}
         self.freq_to_chan = {}
@@ -1228,87 +1224,87 @@ class L3CXProfile(LFCliBase):
             sta_list=",".join(sta_list_edit)
 
         #================== Step 2, monitor columns
-        start_time = datetime.datetime.now()
-        end_time = start_time + datetime.timedelta(seconds=duration_sec)
+      
 
         passes = 0
         expected_passes = 0
         old_cx_rx_values = self.__get_rx_values()        
 
-        #instantiate csv file here, add specified column headers 
-        csvfile=open(str(report_file),'w')
-        csvwriter = csv.writer(csvfile,delimiter=",")      
-        csvwriter.writerow(header_row)
+        # #instantiate csv file here, add specified column headers 
+        # csvfile=open(str(report_file),'w')
+        # csvwriter = csv.writer(csvfile,delimiter=",")      
+        # csvwriter.writerow(header_row)
 
-        #wait 10 seconds to get proper port data
-        time.sleep(10)
-        
+        # #wait 10 seconds to get proper port data
+        # time.sleep(10)
+        # start_time = datetime.datetime.now()
+        # end_time = start_time + datetime.timedelta(seconds=duration_sec)
         # for x in range(0,int(round(iterations,0))):
-        initial_starttime= datetime.datetime.now()
-        while datetime.datetime.now() < end_time:
-            t = datetime.datetime.now()
-            timestamp= t.strftime("%m/%d/%Y %I:%M:%S")
-            t_to_millisec_epoch= int(self.get_milliseconds(t))
-            time_elapsed=int(self.get_seconds(t))-int(self.get_seconds(initial_starttime))
+
+        # while datetime.datetime.now() < end_time:
+        #     t = datetime.datetime.now()
+        #     timestamp= t.strftime("%m/%d/%Y %I:%M:%S")
+        #     t_to_millisec_epoch= int(self.get_milliseconds(t))
+        #     time_elapsed=int(self.get_seconds(t))-int(self.get_seconds(start_time))
         
-            layer_3_response = self.json_get("/endp/%s?fields=%s" % (created_cx, layer3_fields))
-            if port_mgr_cols is not None:
-                port_mgr_response=self.json_get("/port/1/1/%s?fields=%s" % (sta_list, port_mgr_fields))
-            #get info from port manager with list of values from cx_a_side_list
-            if "endpoint" not in layer_3_response or layer_3_response is None:
-                print(layer_3_response)
-                raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
-            if debug:
-                    print("Json layer_3_response from LANforge... " + str(layer_3_response))
-            if port_mgr_cols is not None:
-                if "interfaces" not in port_mgr_response or port_mgr_response is None:
-                    print(port_mgr_response)
-                    raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
-            if debug:
-                    print("Json port_mgr_response from LANforge... " + str(port_mgr_response))
+        #     layer_3_response = self.json_get("/endp/%s?fields=%s" % (created_cx, layer3_fields))
+        #     if port_mgr_cols is not None:
+        #         port_mgr_response=self.json_get("/port/1/1/%s?fields=%s" % (sta_list, port_mgr_fields))
+        #     #get info from port manager with list of values from cx_a_side_list
+        #     if "endpoint" not in layer_3_response or layer_3_response is None:
+        #         print(layer_3_response)
+        #         raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
+        #     if debug:
+        #             print("Json layer_3_response from LANforge... " + str(layer_3_response))
+        #     if port_mgr_cols is not None:
+        #         if "interfaces" not in port_mgr_response or port_mgr_response is None:
+        #             print(port_mgr_response)
+        #             raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
+        #     if debug:
+        #             print("Json port_mgr_response from LANforge... " + str(port_mgr_response))
             
 
          
-            temp_list=[]
-            for endpoint in layer_3_response["endpoint"]:
-                if debug:
-                    print("Current endpoint values list... ")
-                    print(list(endpoint.values())[0])
-                temp_endp_values=list(endpoint.values())[0] #dict
-                temp_list.extend([timestamp,t_to_millisec_epoch,time_elapsed]) 
-                current_sta = temp_endp_values['name']
-                merge={}
-                if port_mgr_cols is not None:
-                    for sta_name in sta_list_edit:
-                        if sta_name in current_sta:
-                            for interface in port_mgr_response["interfaces"]:
-                                if sta_name in list(interface.keys())[0]:
-                                    merge=temp_endp_values.copy()
-                                    #rename keys (separate port mgr 'rx bytes' from layer3 'rx bytes')
-                                    port_mgr_values_dict =list(interface.values())[0]
-                                    renamed_port_cols={}
-                                    for key in port_mgr_values_dict.keys():
-                                        renamed_port_cols['port mgr - ' +key]=port_mgr_values_dict[key]
-                                    merge.update(renamed_port_cols)
-                for name in header_row[3:-3]:
-                    temp_list.append(merge[name])
-                csvwriter.writerow(temp_list)
-                temp_list.clear()
-            new_cx_rx_values = self.__get_rx_values()
-            if debug:
-                print(old_cx_rx_values, new_cx_rx_values)
-                print("\n-----------------------------------")
-                print(t)
-                print("-----------------------------------\n")
-            expected_passes += 1
-            if self.__compare_vals(old_cx_rx_values, new_cx_rx_values):
-                passes += 1
-            else:
-                self.fail("FAIL: Not all stations increased traffic")
-                self.exit_fail()
-            old_cx_rx_values = new_cx_rx_values
-            time.sleep(monitor_interval_ms)
-        csvfile.close()
+        #     temp_list=[]
+        #     for endpoint in layer_3_response["endpoint"]:
+        #         if debug:
+        #             print("Current endpoint values list... ")
+        #             print(list(endpoint.values())[0])
+        #         temp_endp_values=list(endpoint.values())[0] #dict
+        #         temp_list.extend([timestamp,t_to_millisec_epoch,time_elapsed]) 
+        #         current_sta = temp_endp_values['name']
+        #         merge={}
+        #         if port_mgr_cols is not None:
+        #             for sta_name in sta_list_edit:
+        #                 if sta_name in current_sta:
+        #                     for interface in port_mgr_response["interfaces"]:
+        #                         if sta_name in list(interface.keys())[0]:
+        #                             merge=temp_endp_values.copy()
+        #                             #rename keys (separate port mgr 'rx bytes' from layer3 'rx bytes')
+        #                             port_mgr_values_dict =list(interface.values())[0]
+        #                             renamed_port_cols={}
+        #                             for key in port_mgr_values_dict.keys():
+        #                                 renamed_port_cols['port mgr - ' +key]=port_mgr_values_dict[key]
+        #                             merge.update(renamed_port_cols)
+        #         for name in header_row[3:-3]:
+        #             temp_list.append(merge[name])
+        #         csvwriter.writerow(temp_list)
+        #         temp_list.clear()
+        #     new_cx_rx_values = self.__get_rx_values()
+        #     if debug:
+        #         print(old_cx_rx_values, new_cx_rx_values)
+        #         print("\n-----------------------------------")
+        #         print(t)
+        #         print("-----------------------------------\n")
+        #     expected_passes += 1
+        #     if self.__compare_vals(old_cx_rx_values, new_cx_rx_values):
+        #         passes += 1
+        #     else:
+        #         self.fail("FAIL: Not all stations increased traffic")
+        #         self.exit_fail()
+        #     old_cx_rx_values = new_cx_rx_values
+        #     time.sleep(monitor_interval_ms)
+         
 
         #comparison to last report / report inputted
         if compared_report is not None:
