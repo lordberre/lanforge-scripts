@@ -36,6 +36,11 @@ class LFDataCollection:
     def json_get(self, _req_url, debug_=False):
         return self.parent_realm.json_get(_req_url, debug_=False)
     
+    def check_json_validity(self, keyword=None, json_response=None):
+        if json_response is None:
+            raise ValueError("Cannot find columns requested to be searched in port manager. Exiting script, please retry.")
+        if keyword is not None and keyword not in json_response:
+            raise ValueError("Cannot find proper information from json. Please check your json request. Exiting script, please retry.")
     #------------------------------from LFCLiBase (below) ----------------------------
 
 
@@ -88,7 +93,7 @@ class LFDataCollection:
         self.created_cx=created_cx_
         passes = 0
         expected_passes = 0
-        old_cx_rx_values = self.__get_rx_values()
+        #old_cx_rx_values = self.__get_rx_values()
 
         #instantiate csv file here, add specified column headers 
         csvfile=open(str(report_file_),'w')
@@ -112,11 +117,11 @@ class LFDataCollection:
             layer_3_response = self.json_get("/endp/%s?fields=%s" % (created_cx_, layer3_fields_),debug_=self.debug)
             if port_mgr_fields_ is not None:
                 port_mgr_response=self.json_get("/port/1/1/%s?fields=%s" % (sta_list_, port_mgr_fields_), debug_=self.debug)
-                if "interfaces" not in port_mgr_response or port_mgr_response is None:
-                    raise ValueError("Cannot find columns requested to be searched in port manager. Exiting script, please retry.")
-            if "endpoint" not in layer_3_response or layer_3_response is None:
-                raise ValueError("Cannot find columns requested to be searched in Layer 3 tab. Exiting script, please retry.")
-         
+                
+            #check json response validity
+            self.check_json_validity(keyword="endpoint",json_response=layer_3_response)
+            self.check_json_validity(keyword="interfaces",json_response=port_mgr_response)
+               
             #dict manipulation
             temp_list=[]
             for endpoint in layer_3_response["endpoint"]:
@@ -142,17 +147,17 @@ class LFDataCollection:
                 for name in header_row_[3:-3]:
                     temp_list.append(merge[name])
                 csvwriter.writerow(temp_list)
-                temp_list.clear()
-            new_cx_rx_values = self.__get_rx_values()
-            if self.debug:
-                print(old_cx_rx_values, new_cx_rx_values)
-                print("\n-----------------------------------")
-                print(t)
-                print("-----------------------------------\n")
-            expected_passes += 1
-            if not self.__compare_vals(old_cx_rx_values, new_cx_rx_values):
-               exit(1)
-            old_cx_rx_values = new_cx_rx_values
+            #     temp_list.clear()
+            # new_cx_rx_values = self.__get_rx_values()
+            # if self.debug:
+            #     print(old_cx_rx_values, new_cx_rx_values)
+            #     print("\n-----------------------------------")
+            #     print(t)
+            #     print("-----------------------------------\n")
+            # expected_passes += 1
+            # if not self.__compare_vals(old_cx_rx_values, new_cx_rx_values):
+            #    exit(1)
+            # old_cx_rx_values = new_cx_rx_values
             time.sleep(monitor_interval_ms_)
         csvfile.close()
 
