@@ -759,16 +759,16 @@ class Realm(LFCliBase):
         link = self.lfclient_url + link
         info = ()
 
-    def new_station_profile(self):
+    def new_station_profile(self, ver=1):
         station_prof = StationProfile(self.lfclient_url, local_realm=self, debug_=self.debug, up=False)
         return station_prof
 
-    def new_multicast_profile(self):
+    def new_multicast_profile(self, ver=1):
         multi_prof = MULTICASTProfile(self.lfclient_host, self.lfclient_port,
                                       local_realm=self, debug_=self.debug, report_timer_=3000)
         return multi_prof
 
-    def new_wifi_monitor_profile(self, resource_=1, debug_=False, up_=False):
+    def new_wifi_monitor_profile(self, resource_=1, debug_=False, up_=False, ver=1):
         wifi_mon_prof = WifiMonitor(self.lfclient_url,
                                     local_realm=self,
                                     resource_=resource_,
@@ -776,23 +776,38 @@ class Realm(LFCliBase):
                                     debug_=(self.debug or debug_))
         return wifi_mon_prof
 
-    def new_l3_cx_profile(self):
-        cx_prof = L3CXProfile(self.lfclient_host,
+    def new_l3_cx_profile(self, ver=1):
+        if ver==1:
+            cx_prof = L3CXProfile(self.lfclient_host,
                               self.lfclient_port,
                               local_realm=self,
                               debug_=self.debug,
                               report_timer_=3000)
-        return cx_prof
+            return cx_prof
+        elif ver==2:
+            import l3cxprofile2
+            cx_prof = l3cxprofile2.L3CXProfile(self.lfclient_host,
+                              self.lfclient_port,
+                              local_realm=self,
+                              debug_=self.debug,
+                              report_timer_=3000)
+            return cx_prof
 
-    def new_l4_cx_profile(self):
-        cx_prof = L4CXProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
-        return cx_prof
+    def new_l4_cx_profile(self, ver=1):
+        if ver==1:
+            cx_prof =  L4CXProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
+            return cx_prof
+        elif ver==2:
+            import l4cxprofile2
+            cx_prof =  l4cxprofile2.L4CXProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
+            return cx_prof
 
-    def new_generic_endp_profile(self):
+
+    def new_generic_endp_profile(self, ver=1):
         endp_prof = GenCXProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
         return endp_prof
 
-    def new_generic_cx_profile(self):
+    def new_generic_cx_profile(self, ver=1):
         """
         @deprecated
         :return: new GenCXProfile
@@ -800,36 +815,36 @@ class Realm(LFCliBase):
         cx_prof = GenCXProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
         return cx_prof
 
-    def new_vap_profile(self):
+    def new_vap_profile(self, ver=1):
         vap_prof = VAPProfile(lfclient_host=self.lfclient_host, lfclient_port=self.lfclient_port, local_realm=self,
                               debug_=self.debug)
         return vap_prof
 
-    def new_vr_profile(self):
+    def new_vr_profile(self, ver=1):
         vap_prof = VRProfile(lfclient_host=self.lfclient_host,
                              lfclient_port=self.lfclient_port,
                              local_realm=self,
                              debug_=self.debug)
         return vap_prof
 
-    def new_http_profile(self):
+    def new_http_profile(self, ver=1):
         http_prof = HTTPProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
         return http_prof
 
-    def new_fio_endp_profile(self):
+    def new_fio_endp_profile(self, ver=1):
         cx_prof = FIOEndpProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
         return cx_prof
 
-    def new_dut_profile(self):
+    def new_dut_profile(self, ver=1):
         return DUTProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
 
-    def new_mvlan_profile(self):
+    def new_mvlan_profile(self, ver=1):
         return MACVLANProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
 
-    def new_test_group_profile(self):
+    def new_test_group_profile(self, ver=1):
         return TestGroupProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
 
-    def new_vr_profile(self):
+    def new_vr_profile(self, ver=1):
         import vr_profile
         from vr_profile import VRProfile
         profile = VRProfile(local_realm=self,
@@ -1094,8 +1109,7 @@ class L3CXProfile(LFCliBase):
         :param debug_:
         """
         super().__init__(lfclient_host, lfclient_port, debug_, _halt_on_error=True)
-        #self.lfclient_url = "http://%s:%s" % (lfclient_host, lfclient_port)
-        #self.debug = debug_
+        self.debug = debug_
         self.local_realm = local_realm
         self.side_a_min_pdu = side_a_min_pdu
         self.side_b_min_pdu = side_b_min_pdu
@@ -1110,8 +1124,7 @@ class L3CXProfile(LFCliBase):
         self.created_endp = {}
         self.name_prefix = name_prefix_
         self.number_template = number_template_
-        #self.lfclient_port = lfclient_port
-        #self.lfclient_host = lfclient_host
+
 
     def get_cx_names(self):
         return self.created_cx.keys()
