@@ -1094,8 +1094,8 @@ class L3CXProfile(LFCliBase):
         :param debug_:
         """
         super().__init__(lfclient_host, lfclient_port, debug_, _halt_on_error=True)
-        self.lfclient_url = "http://%s:%s" % (lfclient_host, lfclient_port)
-        self.debug = debug_
+        #self.lfclient_url = "http://%s:%s" % (lfclient_host, lfclient_port)
+        #self.debug = debug_
         self.local_realm = local_realm
         self.side_a_min_pdu = side_a_min_pdu
         self.side_b_min_pdu = side_b_min_pdu
@@ -1110,8 +1110,8 @@ class L3CXProfile(LFCliBase):
         self.created_endp = {}
         self.name_prefix = name_prefix_
         self.number_template = number_template_
-        self.lfclient_port = lfclient_port
-        self.lfclient_host = lfclient_host
+        #self.lfclient_port = lfclient_port
+        #self.lfclient_host = lfclient_host
 
     def get_cx_names(self):
         return self.created_cx.keys()
@@ -1196,126 +1196,48 @@ class L3CXProfile(LFCliBase):
             report_file = report_file.replace(str(output_format),'csv',1)
             print("Saving rolling data into..." + str(report_file))
 
-        #================== Step 1, set column names and header row
+        #add layer3 cols to header row
         layer3_cols=[self.replace_special_char(x) for x in layer3_cols]
         layer3_fields = ",".join(layer3_cols)
         default_cols=['Timestamp','Timestamp milliseconds epoch','Duration elapsed']
         default_cols.extend(layer3_cols)
         header_row=default_cols
 
-      
-        #csvwriter.writerow([systeminfo['VersionInfo']['BuildVersion'], script_name, str(arguments)])
-
+        #add port mgr columns to header row
         if port_mgr_cols is not None:
             port_mgr_cols=[self.replace_special_char(x) for x in port_mgr_cols]
             port_mgr_cols_labelled =[]
             for col_name in port_mgr_cols:
                 port_mgr_cols_labelled.append("port mgr - " + col_name)
-            
-            port_mgr_fields=",".join(port_mgr_cols)
             header_row.extend(port_mgr_cols_labelled)
+
         #add sys info to header row
         systeminfo = self.json_get('/')
         header_row.extend([str("LANforge GUI Build: " + systeminfo['VersionInfo']['BuildVersion']), str("Script Name: " + script_name), str("Argument input: " + str(arguments))])
+    
+        #cut "sta" off all "sta_names"
         sta_list_edit=[]
         if sta_list is not None:
             for sta in sta_list:
                 sta_list_edit.append(sta[4:])
             sta_list=",".join(sta_list_edit)
 
-        #================== Step 2, monitor columns
-      
-
-        passes = 0
-        expected_passes = 0
-        old_cx_rx_values = self.__get_rx_values()        
-
-        # #instantiate csv file here, add specified column headers 
-        # csvfile=open(str(report_file),'w')
-        # csvwriter = csv.writer(csvfile,delimiter=",")      
-        # csvwriter.writerow(header_row)
-
-        # #wait 10 seconds to get proper port data
-        # time.sleep(10)
-        # start_time = datetime.datetime.now()
-        # end_time = start_time + datetime.timedelta(seconds=duration_sec)
-        # for x in range(0,int(round(iterations,0))):
-
-        # while datetime.datetime.now() < end_time:
-        #     t = datetime.datetime.now()
-        #     timestamp= t.strftime("%m/%d/%Y %I:%M:%S")
-        #     t_to_millisec_epoch= int(self.get_milliseconds(t))
-        #     time_elapsed=int(self.get_seconds(t))-int(self.get_seconds(start_time))
-        
-        #     layer_3_response = self.json_get("/endp/%s?fields=%s" % (created_cx, layer3_fields))
-        #     if port_mgr_cols is not None:
-        #         port_mgr_response=self.json_get("/port/1/1/%s?fields=%s" % (sta_list, port_mgr_fields))
-        #     #get info from port manager with list of values from cx_a_side_list
-        #     if "endpoint" not in layer_3_response or layer_3_response is None:
-        #         print(layer_3_response)
-        #         raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
-        #     if debug:
-        #             print("Json layer_3_response from LANforge... " + str(layer_3_response))
-        #     if port_mgr_cols is not None:
-        #         if "interfaces" not in port_mgr_response or port_mgr_response is None:
-        #             print(port_mgr_response)
-        #             raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
-        #     if debug:
-        #             print("Json port_mgr_response from LANforge... " + str(port_mgr_response))
-            
-
+        #monitor columns
+        lf_data_collection= LFDataCollection(local_realm=self.local_realm,debug=self.debug)
+        lf_data_collection.monitor_interval(report_file_=report_file, header_row_=header_row,sta_list_=sta_list_edit, created_cx_=created_cx, layer3_fields_=layer3_fields,port_mgr_fields_=",".join(port_mgr_cols), duration_sec_=duration_sec,monitor_interval_ms_=monitor_interval_ms)
          
-        #     temp_list=[]
-        #     for endpoint in layer_3_response["endpoint"]:
-        #         if debug:
-        #             print("Current endpoint values list... ")
-        #             print(list(endpoint.values())[0])
-        #         temp_endp_values=list(endpoint.values())[0] #dict
-        #         temp_list.extend([timestamp,t_to_millisec_epoch,time_elapsed]) 
-        #         current_sta = temp_endp_values['name']
-        #         merge={}
-        #         if port_mgr_cols is not None:
-        #             for sta_name in sta_list_edit:
-        #                 if sta_name in current_sta:
-        #                     for interface in port_mgr_response["interfaces"]:
-        #                         if sta_name in list(interface.keys())[0]:
-        #                             merge=temp_endp_values.copy()
-        #                             #rename keys (separate port mgr 'rx bytes' from layer3 'rx bytes')
-        #                             port_mgr_values_dict =list(interface.values())[0]
-        #                             renamed_port_cols={}
-        #                             for key in port_mgr_values_dict.keys():
-        #                                 renamed_port_cols['port mgr - ' +key]=port_mgr_values_dict[key]
-        #                             merge.update(renamed_port_cols)
-        #         for name in header_row[3:-3]:
-        #             temp_list.append(merge[name])
-        #         csvwriter.writerow(temp_list)
-        #         temp_list.clear()
-        #     new_cx_rx_values = self.__get_rx_values()
-        #     if debug:
-        #         print(old_cx_rx_values, new_cx_rx_values)
-        #         print("\n-----------------------------------")
-        #         print(t)
-        #         print("-----------------------------------\n")
-        #     expected_passes += 1
-        #     if self.__compare_vals(old_cx_rx_values, new_cx_rx_values):
-        #         passes += 1
-        #     else:
-        #         self.fail("FAIL: Not all stations increased traffic")
-        #         self.exit_fail()
-        #     old_cx_rx_values = new_cx_rx_values
-        #     time.sleep(monitor_interval_ms)
-         
+        #into reporting.py
+        # #comparison to last report / report inputted
+        # if compared_report is not None:
+        #     compared_df = self.compare_two_df(dataframe_one=self.file_to_df(report_file), dataframe_two=self.file_to_df(compared_report))
+        #     exit(1)
 
-        #comparison to last report / report inputted
-        if compared_report is not None:
-            compared_df = self.compare_two_df(dataframe_one=self.file_to_df(report_file), dataframe_two=self.file_to_df(compared_report))
-            exit(1)
-            #append compared df to created one
-            if output_format.lower() != 'csv':
-                self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
-        else:
-            if output_format.lower() != 'csv':
-                self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
+        #     #append compared df to created one
+        #     if output_format.lower() != 'csv':
+        #         self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
+        # else:
+        #     if output_format.lower() != 'csv':
+        #         self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
 
 
     def refresh_cx(self):
