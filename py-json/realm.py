@@ -769,11 +769,21 @@ class Realm(LFCliBase):
         return multi_prof
 
     def new_wifi_monitor_profile(self, resource_=1, debug_=False, up_=False, ver=1):
-        wifi_mon_prof = WifiMonitor(self.lfclient_url,
+        if ver==1:
+            wifi_mon_prof = WifiMonitor(self.lfclient_url,
+                                    local_realm=self,
+                                    resource_=resource_,
+                                    up=up_,
+                                   debug_=(self.debug or debug_))
+            return wifi_mon_prof
+        elif ver==2:
+            import wifimonitor2
+            wifi_mon_prof = wifimonitor2.WifiMonitor(self.lfclient_url,
                                     local_realm=self,
                                     resource_=resource_,
                                     up=up_,
                                     debug_=(self.debug or debug_))
+                    
         return wifi_mon_prof
 
     def new_l3_cx_profile(self, ver=1):
@@ -1239,18 +1249,7 @@ class L3CXProfile(LFCliBase):
         lf_data_collection= LFDataCollection(local_realm=self.local_realm,debug=self.debug)
         lf_data_collection.monitor_interval(report_file_=report_file, header_row_=header_row,sta_list_=sta_list_edit, created_cx_=created_cx, layer3_fields_=layer3_fields,port_mgr_fields_=",".join(port_mgr_cols), duration_sec_=duration_sec,monitor_interval_ms_=monitor_interval_ms)
          
-        #into reporting.py
-        # #comparison to last report / report inputted
-        # if compared_report is not None:
-        #     compared_df = self.compare_two_df(dataframe_one=self.file_to_df(report_file), dataframe_two=self.file_to_df(compared_report))
-        #     exit(1)
-
-        #     #append compared df to created one
-        #     if output_format.lower() != 'csv':
-        #         self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
-        # else:
-        #     if output_format.lower() != 'csv':
-        #         self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
+      
 
 
     def refresh_cx(self):

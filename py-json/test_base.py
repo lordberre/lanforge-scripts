@@ -17,7 +17,17 @@ class TestBase:
         pass
 
     def build(self):
-        pass
+        self.station_profile.use_security(self.security, self.ssid, self.password)
+        self.station_profile.set_number_template(self.number_template)
+        print("Creating stations")
+        self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
+        self.station_profile.set_command_param("set_port", "report_timer", 1500)
+        self.station_profile.set_command_flag("set_port", "rpt_timer", 1)
+        self.station_profile.create(radio=self.radio, sta_names_=self.sta_list, debug=self.debug)
+        self.cx_profile.create(endp_type="lf_udp", side_a=self.station_profile.station_names, side_b=self.upstream,
+                               sleep_time=0)
+        self._pass("PASS: Station build finished")
+      
     def passes(self):
         for profile in profiles:
             do profile.check_passes()
@@ -34,9 +44,10 @@ class TestBase:
                 self.exit_fail()
         self.check_for_quit()
          
-        pass
+        
+
     def report(self):
-        #here check if monitor is enabled or not, then run loop accordingly
+        #here check if monitor is enabled or not, then run loop accordingly with lfreporting
         pass
 
     def begin(self):
