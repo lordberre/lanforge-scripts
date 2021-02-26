@@ -796,7 +796,7 @@ class Realm(LFCliBase):
             return cx_prof
         elif ver==2:
             import l3cxprofile2
-            cx_prof = l3cxprofile2.L3CXProfile(self.lfclient_host,
+            cx_prof = l3cxprofile2.L3CXProfile2(self.lfclient_host,
                               self.lfclient_port,
                               local_realm=self,
                               debug_=self.debug,
@@ -906,6 +906,38 @@ class BaseProfile:
 
     def logg(self, message=None):
         self.parent_realm.logg(message)
+    
+    #only for Layer 3 checking
+    def get_rx_values(self):
+        cx_list = self.json_get("endp?fields=name,rx+bytes")
+        if self.debug:
+            print(self.created_cx.values())
+            print("==============\n", cx_list, "\n==============")
+        cx_rx_map = {}
+        for cx_name in cx_list['endpoint']:
+            if cx_name != 'uri' and cx_name != 'handler':
+                for item, value in cx_name.items():
+                    for value_name, value_rx in value.items():
+                        if value_name == 'rx bytes' and item in self.created_cx.values():
+                            cx_rx_map[item] = value_rx
+        return cx_rx_map
+
+    #only for Layer 3 checking
+    def compare_vals(self, old_list, new_list):
+        passes = 0
+        expected_passes = 0
+        if len(old_list) == len(new_list):
+            for item, value in old_list.items():
+                expected_passes += 1
+                if new_list[item] > old_list[item]:
+                    passes += 1
+
+            if passes == expected_passes:
+                return True
+            else:
+                return False
+        else:
+            return False
 
 class MULTICASTProfile(LFCliBase):
     def __init__(self, lfclient_host, lfclient_port, local_realm,

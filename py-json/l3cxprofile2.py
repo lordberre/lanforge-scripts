@@ -9,6 +9,7 @@ from LANforge import set_port
 from LANforge import add_sta
 from LANforge import add_dut
 from LANforge import lfcli_base
+from LANforge.realm import BaseProfile
 from LANforge import add_vap
 from LANforge.lfcli_base import LFCliBase
 from lfdata import LFDataCollection
@@ -80,35 +81,6 @@ class L3CXProfile2(BaseProfile):
             self.data[cx_name] = self.json_get("/cx/" + cx_name).get(cx_name)
         return self.data
 
-    def get_rx_values(self):
-        cx_list = self.json_get("endp?fields=name,rx+bytes")
-        if self.debug:
-            print(self.created_cx.values())
-            print("==============\n", cx_list, "\n==============")
-        cx_rx_map = {}
-        for cx_name in cx_list['endpoint']:
-            if cx_name != 'uri' and cx_name != 'handler':
-                for item, value in cx_name.items():
-                    for value_name, value_rx in value.items():
-                        if value_name == 'rx bytes' and item in self.created_cx.values():
-                            cx_rx_map[item] = value_rx
-        return cx_rx_map
-
-    def compare_vals(self, old_list, new_list):
-        passes = 0
-        expected_passes = 0
-        if len(old_list) == len(new_list):
-            for item, value in old_list.items():
-                expected_passes += 1
-                if new_list[item] > old_list[item]:
-                    passes += 1
-
-            if passes == expected_passes:
-                return True
-            else:
-                return False
-        else:
-            return False
 
     def instantiate_file(self, file_name, file_format):
         pass
@@ -184,18 +156,6 @@ class L3CXProfile2(BaseProfile):
         lf_data_collection= LFDataCollection(local_realm=self.local_realm,debug=self.debug)
         lf_data_collection.monitor_interval(report_file_=report_file, header_row_=header_row,sta_list_=sta_list_edit, created_cx_=created_cx, layer3_fields_=layer3_fields,port_mgr_fields_=",".join(port_mgr_cols), duration_sec_=duration_sec,monitor_interval_ms_=monitor_interval_ms)
          
-        #into reporting.py
-        # #comparison to last report / report inputted
-        # if compared_report is not None:
-        #     compared_df = self.compare_two_df(dataframe_one=self.file_to_df(report_file), dataframe_two=self.file_to_df(compared_report))
-        #     exit(1)
-
-        #     #append compared df to created one
-        #     if output_format.lower() != 'csv':
-        #         self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
-        # else:
-        #     if output_format.lower() != 'csv':
-        #         self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
 
 
     def refresh_cx(self):

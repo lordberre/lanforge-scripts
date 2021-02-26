@@ -57,4 +57,10 @@ class TestBase:
         self.run_duration()
         self.stop() 
         self.report()   
-       
+#add to confluence
+# ---------------------------------   
+#script to avoid collisions :
+    #check valid names already in LANforge - generate next available name
+
+#ability to run tests in different tabs in GUI at the same time
+#    
