@@ -9,12 +9,12 @@ from LANforge import set_port
 from LANforge import add_sta
 from LANforge import add_dut
 from LANforge import lfcli_base
-from LANforge.realm import BaseProfile
 from LANforge import add_vap
 from LANforge.lfcli_base import LFCliBase
 from lfdata import LFDataCollection
 from LANforge import add_monitor
 from LANforge.add_monitor import *
+from LANforge.base_profile import BaseProfile
 import os
 import datetime
 import base64
@@ -408,4 +408,43 @@ class L3CXProfile2(BaseProfile):
         self.local_realm.wait_until_cxs_appear(these_cx, debug=debug_)
 
     def to_string(self):
-        pprint.pprint(self)
+        pprint(self)
+
+    # temp transfer of functions from test script to class 
+    def build(self):    
+        self.station_profile.use_security(self.security, self.ssid, self.password)
+        self.station_profile.set_number_template(self.number_template)
+        print("Creating stations")
+        self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
+        self.station_profile.set_command_param("set_port", "report_timer", 1500)
+        self.station_profile.set_command_flag("set_port", "rpt_timer", 1)
+        self.station_profile.create(radio=self.radio, sta_names_=self.sta_list, debug=self.debug)
+        self.cx_profile.create(endp_type="lf_udp", side_a=self.station_profile.station_names, side_b=self.upstream,
+                               sleep_time=0)
+        self._pass("PASS: Station build finished")
+        def start(self, print_pass=False, print_fail=False):
+        self.station_profile.admin_up()
+        # to-do- check here if upstream port got IP
+        temp_stas = self.station_profile.station_names.copy()
+
+        if self.wait_for_ip(temp_stas):
+            self._pass("All stations got IPs")
+        else:
+            self._fail("Stations failed to get IPs")
+            self.exit_fail()
+        self.cx_profile.start_cx()
+
+    def stop(self):
+        self.cx_profile.stop_cx()
+        self.station_profile.admin_down()
+
+    def pre_cleanup(self):
+        self.cx_profile.cleanup_prefix()
+        for sta in self.sta_list:
+            self.rm_port(sta, check_exists=True)
+
+    def cleanup(self):
+        self.cx_profile.cleanup()
+        self.station_profile.cleanup()
+        LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url, port_list=self.station_profile.station_names,
+                                           debug=self.debug)

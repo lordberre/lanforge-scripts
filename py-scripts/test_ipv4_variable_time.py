@@ -22,7 +22,6 @@ if 'py-json' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
 
 import argparse
-#from LANforge.lfcli_base import LFCliBase
 from LANforge import LFUtils
 from realm import Realm
 import time
