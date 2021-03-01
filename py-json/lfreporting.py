@@ -10,7 +10,7 @@ import datetime
 import pandas as pd
 
 
-class Reporting():
+class LFReporting:
 
     def change_formats(self):
         # if compared_report is not None:

@@ -27,6 +27,11 @@ class TestBase:
                 profile.stop()
 
     def build(self):
+        # - create station profile
+        # - create 2 criteria [ex: not down, continually_receiving] object (for ex)
+            # - station_profile.add_criteria([not_down, continually_receiving, etc_3])
+            # design - inversion of control 
+
         if self.profiles:
             for profile in self.profiles:
                 profile.build()
