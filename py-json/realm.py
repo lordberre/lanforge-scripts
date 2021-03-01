@@ -169,6 +169,7 @@ class Realm(LFCliBase):
         self.freq_to_chan[4970] = 194
         self.freq_to_chan[4980] = 196
 
+    
     def wait_until_ports_appear(self, sta_list=None, debug_=False):
         if (sta_list is None) or (len(sta_list) < 1):
             print("realm.wait_until_ports_appear: no stations provided")
@@ -760,8 +761,13 @@ class Realm(LFCliBase):
         info = ()
 
     def new_station_profile(self, ver=1):
-        station_prof = StationProfile(self.lfclient_url, local_realm=self, debug_=self.debug, up=False)
-        return station_prof
+        if ver == 1:
+            station_prof = StationProfile(self.lfclient_url, local_realm=self, debug_=self.debug, up=False)
+            return station_prof
+        elif ver == 2:
+            import stationprofile2
+            station_prof =  StationProfile2(self.lfclient_url, local_realm=self, debug_=self.debug, up=False)
+            return station_prof
 
     def new_multicast_profile(self, ver=1):
         multi_prof = MULTICASTProfile(self.lfclient_host, self.lfclient_port,
