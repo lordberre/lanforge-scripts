@@ -765,7 +765,7 @@ class Realm(LFCliBase):
             station_prof = StationProfile(self.lfclient_url, local_realm=self, debug_=self.debug, up=False)
             return station_prof
         elif ver == 2:
-            import stationprofile2
+            import station_profile2
             station_prof =  StationProfile2(self.lfclient_url, local_realm=self, debug_=self.debug, up=False)
             return station_prof
 
@@ -3670,18 +3670,5 @@ class StationProfile:
         if self.debug:
             print("created %s stations" % num)
 
-    #functions used in test_base
-    def build(self):
-        self.create(radio=self.radio, sta_names_=self.sta_list, debug=self.debug)
-    def start(self):
-        self.admin_up()
-        if self.wait_for_ip(station_list):
-            self._pass("All stations got IPs")
-        else:
-            self._fail("Stations failed to get IPs")
-            self.exit_fail()
-
-    def stop(self):
-        self.admin_down()
 
 #
