@@ -52,7 +52,8 @@ class IPV4VariableTime(Realm, TestBase):
                  _exit_on_fail=False):
         super().__init__(lfclient_host=host,
                          lfclient_port=port)
-        self.l3cxprofile = self.new_l3_cx_profile()
+
+        self.add_to
         self.upstream = upstream
         self.host = host
         self.port = port
@@ -74,22 +75,29 @@ class IPV4VariableTime(Realm, TestBase):
         # })
         self.name_prefix = name_prefix
         self.test_duration = test_duration
-        self.station_profile = self.new_station_profile()
-        self.cx_profile = self.new_l3_cx_profile()
+        self.station_profile = self.new_station_profile(station_list=sta_list)
+        self.cx_profile = self.new_l3_cx_profile(ver=2)
+
+        #station profile settings
         self.station_profile.lfclient_url = self.lfclient_url
         self.station_profile.ssid = self.ssid
         self.station_profile.ssid_pass = self.password
         self.station_profile.security = self.security
         self.station_profile.number_template_ = self.number_template
         self.station_profile.debug = self.debug
-
+        self.station_profile.use_security(self.security, self.ssid, self.password)
+        self.station_profile.set_number_template(self.number_template)
+        self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
+        self.station_profile.set_command_param("set_port", "report_timer", 1500)
+        self.station_profile.set_command_flag("set_port", "rpt_timer", 1)
         self.station_profile.use_ht160 = use_ht160
         if self.station_profile.use_ht160:
             self.station_profile.mode = 9
         self.station_profile.mode = mode
         if self.ap is not None:
             self.station_profile.set_command_param("add_sta", "ap", self.ap)
-
+        
+        #cx profile settings
         self.cx_profile.host = self.host
         self.cx_profile.port = self.port
         self.cx_profile.name_prefix = self.name_prefix
@@ -97,6 +105,7 @@ class IPV4VariableTime(Realm, TestBase):
         self.cx_profile.side_a_max_bps = side_a_max_rate
         self.cx_profile.side_b_min_bps = side_b_min_rate
         self.cx_profile.side_b_max_bps = side_b_max_rate
+        self.profiles.extend([self.station_profile, self.cx_profile])
 
 def main():
     optional = []
@@ -238,9 +247,35 @@ python3 ./test_ipv4_variable_time.py
     if (args.num_stations is not None) and (int(args.num_stations) > 0):
         num_sta = int(args.num_stations)
 
-            
+
     station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=num_sta - 1, padding_number_=10000,
                                           radio=args.radio)
+
+    #transfer below to l3cxprofile2 or base_profile-----------------------#
+        # try:
+        #     layer3connections = ','.join([[*x.keys()][0] for x in ip_var_test.json_get('endp')['endpoint']])
+        # except:
+        #     raise ValueError('Try setting the upstream port flag if your device does not have an eth1 port')
+
+        # if type(args.layer3_cols) is not list:
+        #     layer3_cols = list(args.layer3_cols.split(","))
+        #     # send col names here to file to reformat
+        # else:
+        #     layer3_cols = args.layer3_cols
+        #     # send col names here to file to reformat
+        # if type(args.port_mgr_cols) is not list:
+        #     port_mgr_cols = list(args.port_mgr_cols.split(","))
+        #     # send col names here to file to reformat
+        # else:
+        #     port_mgr_cols = args.port_mgr_cols
+        #     # send col names here to file to reformat
+        # if args.debug:
+        #     print("Layer 3 Endp column names are...")
+        #     print(layer3_cols)
+        #     print("Port Manager column names are...")
+        #     print(port_mgr_cols)
+    
+         
     ip_var_test = IPV4VariableTime(host=args.mgr,
                                    port=args.mgr_port,
                                    number_template="0000",
@@ -259,104 +294,7 @@ python3 ./test_ipv4_variable_time.py
                                    ap=args.ap,
                                    _debug_on=args.debug)
 
-    ip_var_test.pre_cleanup()
-    ip_var_test.build()
-    if not ip_var_test.passes():
-        print(ip_var_test.get_fail_message())
-        ip_var_test.exit_fail()
-
-    monitor_interval = Realm.parse_time(args.monitor_interval).total_seconds()
-    if args.monitor:
-    # Create directory
-
-    # if file path with output file extension is not given...
-    # check if home/lanforge/report-data exists. if not, save 
-    # in new folder based in current file's directory
-
-        if args.report_file is None:
-            new_file_path = str(datetime.datetime.now().strftime("%Y-%m-%d-%H-h-%M-m-%S-s")).replace(':',
-                                                                                            '-') + '-test_ipv4_variable_time'  # create path name
-            try:
-                path = os.path.join('/home/lanforge/report-data/', new_file_path)
-                os.mkdir(path)
-            except:
-                curr_dir_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                path = os.path.join(curr_dir_path, new_file_path)
-                os.mkdir(path)
-
-            if args.output_format in ['csv', 'json', 'html', 'hdf','stata', 'pickle', 'pdf', 'png', 'parquet',
-                                    'xlsx']:
-                report_f = str(path) + '/data.' + args.output_format
-                output = args.output_format
-            else:
-                print('Not supporting this report format or cannot find report format provided. Defaulting to csv data file output type, naming it data.csv.')
-                report_f = str(path) + '/data.csv'
-                output = 'csv'
-                
-        else:
-            report_f = args.report_file
-            if args.output_format is None:
-                output = str(args.report_file).split('.')[-1]
-            else:
-                output = args.output_format
-        print("Saving final report data in ... " + report_f)
-
-        compared_rept=None
-        if args.compared_report:
-            compared_report_format=args.compared_report.split('.')[-1]
-            #if compared_report_format not in ['csv', 'json', 'dta', 'pkl','html','xlsx','parquet','h5']:
-            if compared_report_format != 'csv':
-                print(ValueError("Cannot process this file type. Please select a different file and re-run script."))
-                exit(1)
-            else:
-                compared_rept=args.compared_report
-
-        try:
-            layer3connections = ','.join([[*x.keys()][0] for x in ip_var_test.json_get('endp')['endpoint']])
-        except:
-            raise ValueError('Try setting the upstream port flag if your device does not have an eth1 port')
-
-        if type(args.layer3_cols) is not list:
-            layer3_cols = list(args.layer3_cols.split(","))
-            # send col names here to file to reformat
-        else:
-            layer3_cols = args.layer3_cols
-            # send col names here to file to reformat
-        if type(args.port_mgr_cols) is not list:
-            port_mgr_cols = list(args.port_mgr_cols.split(","))
-            # send col names here to file to reformat
-        else:
-            port_mgr_cols = args.port_mgr_cols
-            # send col names here to file to reformat
-        if args.debug:
-            print("Layer 3 Endp column names are...")
-            print(layer3_cols)
-            print("Port Manager column names are...")
-            print(port_mgr_cols)
-
-        ip_var_test.start(False, False)
-        ip_var_test.l3cxprofile.monitor(layer3_cols=layer3_cols,
-                                    sta_list=station_list,
-                                    port_mgr_cols=port_mgr_cols,
-                                    report_file=report_f,
-                                    duration_sec=Realm.parse_time(args.test_duration).total_seconds(),
-                                    monitor_interval_ms=monitor_interval,
-                                    created_cx=layer3connections,
-                                    output_format=output,
-                                    compared_report=compared_rept,
-                                    script_name='test_ipv4_variable_time',
-                                    arguments=args,
-                                    debug=args.debug)
-    else:
-        ip_var_test.start(False, False)
-    ip_var_test.stop()
-    if not ip_var_test.passes():
-        print(ip_var_test.get_fail_message())
-        ip_var_test.exit_fail()
-    time.sleep(30)
-    ip_var_test.cleanup()
-    if ip_var_test.passes():
-        ip_var_test.exit_success()
+    ip_var_test.begin()
 
 
 if __name__ == "__main__":

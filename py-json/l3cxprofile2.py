@@ -18,6 +18,7 @@ from LANforge.base_profile import BaseProfile
 import os
 import datetime
 import base64
+import csv
 
 
 class L3CXProfile2(BaseProfile):
@@ -84,78 +85,38 @@ class L3CXProfile2(BaseProfile):
 
     def instantiate_file(self, file_name, file_format):
         pass
+############################################ transfer into lfcriteria.py
+    #get current rx values
+    def __get_rx_values(self):
+        cx_list = self.json_get("endp?fields=name,rx+bytes")
+        if self.debug:
+            print(self.created_cx.values())
+            print("==============\n", cx_list, "\n==============")
+        cx_rx_map = {}
+        for cx_name in cx_list['endpoint']:
+            if cx_name != 'uri' and cx_name != 'handler':
+                for item, value in cx_name.items():
+                    for value_name, value_rx in value.items():
+                        if value_name == 'rx bytes' and item in self.created_cx.values():
+                            cx_rx_map[item] = value_rx
+        return cx_rx_map
+    #compare vals
+    def __compare_vals(self, old_list, new_list):
+        passes = 0
+        expected_passes = 0
+        if len(old_list) == len(new_list):
+            for item, value in old_list.items():
+                expected_passes += 1
+                if new_list[item] > old_list[item]:
+                    passes += 1
 
-    def monitor(self,
-                duration_sec=60,
-                monitor_interval_ms=1,
-                sta_list=None,
-                layer3_cols=None,
-                port_mgr_cols=None,
-                created_cx=None,
-                monitor=True,
-                report_file=None,
-                output_format=None,
-                script_name=None,
-                arguments=None,
-                compared_report=None,
-                debug=False):
-        try:
-            duration_sec = self.parse_time(duration_sec).seconds
-        except:
-            if (duration_sec is None) or (duration_sec <= 1):
-                raise ValueError("L3CXProfile::monitor wants duration_sec > 1 second")
-            if (duration_sec <= monitor_interval_ms):
-                raise ValueError("L3CXProfile::monitor wants duration_sec > monitor_interval")
-        if report_file == None:
-            raise ValueError("Monitor requires an output file to be defined")
-        if created_cx == None:
-            raise ValueError("Monitor needs a list of Layer 3 connections")
-        if (monitor_interval_ms is None) or (monitor_interval_ms < 1):
-            raise ValueError("L3CXProfile::monitor wants monitor_interval >= 1 second")
-        if layer3_cols is None:
-            raise ValueError("L3CXProfile::monitor wants a list of column names to monitor")
-        if output_format is not None:
-            if output_format.lower() != report_file.split('.')[-1]:
-                raise ValueError('Filename %s has an extension that does not match output format %s .' % (report_file, output_format))
+            if passes == expected_passes:
+                return True
+            else:
+                return False
         else:
-            output_format = report_file.split('.')[-1]
-       
-
-        #default save to csv first
-        if report_file.split('.')[-1] != 'csv':
-            report_file = report_file.replace(str(output_format),'csv',1)
-            print("Saving rolling data into..." + str(report_file))
-
-        #add layer3 cols to header row
-        layer3_cols=[self.replace_special_char(x) for x in layer3_cols]
-        layer3_fields = ",".join(layer3_cols)
-        default_cols=['Timestamp','Timestamp milliseconds epoch','Duration elapsed']
-        default_cols.extend(layer3_cols)
-        header_row=default_cols
-
-        #add port mgr columns to header row
-        if port_mgr_cols is not None:
-            port_mgr_cols=[self.replace_special_char(x) for x in port_mgr_cols]
-            port_mgr_cols_labelled =[]
-            for col_name in port_mgr_cols:
-                port_mgr_cols_labelled.append("port mgr - " + col_name)
-            header_row.extend(port_mgr_cols_labelled)
-
-        #add sys info to header row
-        systeminfo = self.json_get('/')
-        header_row.extend([str("LANforge GUI Build: " + systeminfo['VersionInfo']['BuildVersion']), str("Script Name: " + script_name), str("Argument input: " + str(arguments))])
-    
-        #cut "sta" off all "sta_names"
-        sta_list_edit=[]
-        if sta_list is not None:
-            for sta in sta_list:
-                sta_list_edit.append(sta[4:])
-            sta_list=",".join(sta_list_edit)
-
-        #monitor columns
-        lf_data_collection= LFDataCollection(local_realm=self.local_realm,debug=self.debug)
-        lf_data_collection.monitor_interval(report_file_=report_file, header_row_=header_row,sta_list_=sta_list_edit, created_cx_=created_cx, layer3_fields_=layer3_fields,port_mgr_fields_=",".join(port_mgr_cols), duration_sec_=duration_sec,monitor_interval_ms_=monitor_interval_ms)
-         
+            return False
+############################################ transfer into lfcriteria.py
 
 
     def refresh_cx(self):
@@ -204,6 +165,7 @@ class L3CXProfile2(BaseProfile):
                     if self.debug:
                         print("Cleaning endpoint: %s"%(ename))
                     self.local_realm.rm_endp(self.created_cx[cx_name][side])
+        
 
     def create(self, endp_type, side_a, side_b, sleep_time=0.03, suppress_related_commands=None, debug_=False,
                tos=None):
@@ -412,39 +374,97 @@ class L3CXProfile2(BaseProfile):
 
     # temp transfer of functions from test script to class 
     def build(self):    
-        self.station_profile.use_security(self.security, self.ssid, self.password)
-        self.station_profile.set_number_template(self.number_template)
-        print("Creating stations")
-        self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
-        self.station_profile.set_command_param("set_port", "report_timer", 1500)
-        self.station_profile.set_command_flag("set_port", "rpt_timer", 1)
-        self.station_profile.create(radio=self.radio, sta_names_=self.sta_list, debug=self.debug)
-        self.cx_profile.create(endp_type="lf_udp", side_a=self.station_profile.station_names, side_b=self.upstream,
+        self.create(endp_type="lf_udp", side_a=self.station_profile.station_names, side_b=self.upstream,
                                sleep_time=0)
-        self._pass("PASS: Station build finished")
-        def start(self, print_pass=False, print_fail=False):
-        self.station_profile.admin_up()
-        # to-do- check here if upstream port got IP
-        temp_stas = self.station_profile.station_names.copy()
-
-        if self.wait_for_ip(temp_stas):
-            self._pass("All stations got IPs")
-        else:
-            self._fail("Stations failed to get IPs")
-            self.exit_fail()
-        self.cx_profile.start_cx()
+    def start(self):
+        self.start_cx()
 
     def stop(self):
-        self.cx_profile.stop_cx()
-        self.station_profile.admin_down()
+        self.stop_cx()
 
+    #to do : have the variables saved in l3cx profile, upon creation of profile , and called)
+    def monitor_record(self,
+                duration_sec=60,
+                monitor_interval_ms=1,
+                sta_list=None,
+                layer3_cols=None,
+                port_mgr_cols=None,
+                created_cx=None,
+                report_file=None,
+                output_format=None,
+                script_name=None,
+                arguments=None,
+                compared_report=None,
+                debug=False):
+        try:
+            duration_sec = self.parse_time(duration_sec).seconds
+        except:
+            if (duration_sec is None) or (duration_sec <= 1):
+                raise ValueError("L3CXProfile::monitor wants duration_sec > 1 second")
+            if (duration_sec <= monitor_interval_ms):
+                raise ValueError("L3CXProfile::monitor wants duration_sec > monitor_interval")
+        if report_file == None:
+            raise ValueError("Monitor requires an output file to be defined")
+        if created_cx == None:
+            raise ValueError("Monitor needs a list of Layer 3 connections")
+        if (monitor_interval_ms is None) or (monitor_interval_ms < 1):
+            raise ValueError("L3CXProfile::monitor wants monitor_interval >= 1 second")
+        if layer3_cols is None:
+            raise ValueError("L3CXProfile::monitor wants a list of column names to monitor")
+        if output_format is not None:
+            if output_format.lower() != report_file.split('.')[-1]:
+                raise ValueError('Filename %s has an extension that does not match output format %s .' % (report_file, output_format))
+        else:
+            output_format = report_file.split('.')[-1]
+       
+
+        #default save to csv first
+        if report_file.split('.')[-1] != 'csv':
+            report_file = report_file.replace(str(output_format),'csv',1)
+            print("Saving rolling data into..." + str(report_file))
+
+        #add layer3 cols to header row
+        layer3_cols=[self.replace_special_char(x) for x in layer3_cols]
+        layer3_fields = ",".join(layer3_cols)
+        default_cols=['Timestamp','Timestamp milliseconds epoch','Duration elapsed']
+        default_cols.extend(layer3_cols)
+        header_row=default_cols
+
+        #add port mgr columns to header row
+        if port_mgr_cols is not None:
+            port_mgr_cols=[self.replace_special_char(x) for x in port_mgr_cols]
+            port_mgr_cols_labelled =[]
+            for col_name in port_mgr_cols:
+                port_mgr_cols_labelled.append("port mgr - " + col_name)
+            header_row.extend(port_mgr_cols_labelled)
+
+        #add sys info to header row
+        systeminfo = self.json_get('/')
+        header_row.extend([str("LANforge GUI Build: " + systeminfo['VersionInfo']['BuildVersion']), str("Script Name: " + script_name), str("Argument input: " + str(arguments))])
+    
+        #cut "sta" off all "sta_names"
+        sta_list_edit=[]
+        if sta_list is not None:
+            for sta in sta_list:
+                sta_list_edit.append(sta[4:])
+            sta_list=",".join(sta_list_edit)
+
+        #instantiate csv file here, add specified column headers 
+        csvfile=open(str(report_file),'w')
+        csvwriter = csv.writer(csvfile,delimiter=",")      
+        csvwriter.writerow(header_row)
+
+        #wait 10 seconds to get IPs
+        time.sleep(10)
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=duration_sec)
+
+        #create lf data object
+        lf_data_collection= LFDataCollection(local_realm=self.local_realm,debug=self.debug)
+        while datetime.datetime.now() < end_time:
+            csvwriter.writerow(lf_data_collection.monitor_interval(start_time_=start_time,sta_list_=sta_list_edit, created_cx_=created_cx, layer3_fields_=layer3_fields,port_mgr_fields_=",".join(port_mgr_cols)))
+            time.sleep(monitor_interval_ms)
+        csvfile.close()
+        
     def pre_cleanup(self):
-        self.cx_profile.cleanup_prefix()
-        for sta in self.sta_list:
-            self.rm_port(sta, check_exists=True)
-
-    def cleanup(self):
-        self.cx_profile.cleanup()
-        self.station_profile.cleanup()
-        LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url, port_list=self.station_profile.station_names,
-                                           debug=self.debug)
+        self.cleanup_prefix()

@@ -52,9 +52,41 @@ class BaseProfile:
     def logg(self, message=None):
         self.parent_realm.logg(message)
 
-    def add_to_profiles(self, profile):
-        self.profiles.append(profile)
+    #Find file path to save data/csv to:
+        if args.report_file is None:
+            new_file_path = str(datetime.datetime.now().strftime("%Y-%m-%d-%H-h-%M-m-%S-s")).replace(':',
+                                                                                            '-') + '-test_ipv4_variable_time'  # create path name
+            try:
+                path = os.path.join('/home/lanforge/report-data/', new_file_path)
+                os.mkdir(path)
+            except:
+                curr_dir_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                path = os.path.join(curr_dir_path, new_file_path)
+                os.mkdir(path)
 
-    def get_current_profiles(self):
-        return self.profiles
-    
+            if args.output_format in ['csv', 'json', 'html', 'hdf','stata', 'pickle', 'pdf', 'png', 'parquet',
+                                    'xlsx']:
+                report_f = str(path) + '/data.' + args.output_format
+                output = args.output_format
+            else:
+                print('Not supporting this report format or cannot find report format provided. Defaulting to csv data file output type, naming it data.csv.')
+                report_f = str(path) + '/data.csv'
+                output = 'csv'
+                
+        else:
+            report_f = args.report_file
+            if args.output_format is None:
+                output = str(args.report_file).split('.')[-1]
+            else:
+                output = args.output_format
+        print("Saving final report data in ... " + report_f)
+
+        compared_rept=None
+        if args.compared_report:
+            compared_report_format=args.compared_report.split('.')[-1]
+            #if compared_report_format not in ['csv', 'json', 'dta', 'pkl','html','xlsx','parquet','h5']:
+            if compared_report_format != 'csv':
+                print(ValueError("Cannot process this file type. Please select a different file and re-run script."))
+                exit(1)
+            else:
+                compared_rept=args.compared_report

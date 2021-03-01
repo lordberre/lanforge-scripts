@@ -3,46 +3,54 @@ import lfdata
 import lfreporting
 
 class TestBase:
+    def __init__(self):
+        self.profiles = list()
 
-    
     def pre_clean_up(self):
-        for profile in profiles:
-            do profile.precleanup()
+        if self.profiles:
+            for profile in self.profiles:
+                profile.precleanup()
 
     def clean_up(self):
-        for profile in profiles:
-            do profile.cleanup()
+        if self.profiles:
+            for profile in self.profiles:
+                profile.cleanup()
 
     def start(self):
-         for profile in profiles:
-            do profile.start()
+        if self.profiles:
+            for profile in self.profiles:
+                profile.start()
 
     def stop(self):
-        for profile in profiles:
-            do profile.stop()
+        if self.profiles:
+            for profile in self.profiles:
+                profile.stop()
 
     def build(self):
-        for profile in profiles:
-            do profile.check_passes()
+        if self.profiles:
+            for profile in self.profiles:
+                profile.build()
+
     def passes(self):
-        for profile in profiles:
-            do profile.check_passes()
+        if self.profiles:
+            for profile in self.profiles:
+                profile.check_passes()
         
-    def run_duration(self):
+    def run_duration(self, monitor_enabled= False):
         #here check if monitor is enabled or not, then run loop accordingly
         self.check_for_halt()
-        for profile in profiles:
-            do profile.monitor_record() #check for halt in monitor record? 
-        for profile in profiles:
-            do profile.grade()
+        if self.profiles:
+            if monitor_enabled:
+                for profile in self.profiles:
+                    profile.monitor_record() #check for halt in monitor record? 
+            for profile in self.profiles:
+                profile.grade()
         if self.exit_on_fail:
             if self.fails():
                 self.exit_fail()
         self.check_for_quit()
          
-    
-
-    def report(self):
+    def report(self, enabled= False):
         #here check if monitor is enabled or not, then run loop accordingly with lfreporting
         pass
 

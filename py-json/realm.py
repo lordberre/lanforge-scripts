@@ -3210,6 +3210,7 @@ class StationProfile:
                  ssid="NA",
                  ssid_pass="NA",
                  security="open",
+                 station_list=None,
                  number_template_="00000",
                  mode=0,
                  up=True,
@@ -3235,6 +3236,7 @@ class StationProfile:
         self.desired_add_sta_flags_mask = ["wpa2_enable", "80211u_enable", "create_admin_down"]
         self.number_template = number_template_
         self.station_names = []  # eids, these are created station names
+        self.sta_list= station_list #station list to be created, passed in from test script
         self.add_sta_data = {
             "shelf": 1,
             "resource": 1,
@@ -3499,7 +3501,7 @@ class StationProfile:
         LFUtils.wait_until_ports_disappear(base_url=self.lfclient_url, port_list=desired_stations)
 
     # Checks for errors in initialization values and creates specified number of stations using init parameters
-    def create(self, radio,
+    def create(self, radio= None,
                num_stations=0,
                sta_names_=None,
                dry_run=False,
@@ -3661,5 +3663,19 @@ class StationProfile:
         #     time.sleep(0.03)
         if self.debug:
             print("created %s stations" % num)
+
+    #functions used in test_base
+    def build(self):
+        self.create(radio=self.radio, sta_names_=self.sta_list, debug=self.debug)
+    def start(self):
+        self.admin_up()
+        if self.wait_for_ip(station_list):
+            self._pass("All stations got IPs")
+        else:
+            self._fail("Stations failed to get IPs")
+            self.exit_fail()
+
+    def stop(self):
+        self.admin_down()
 
 #
