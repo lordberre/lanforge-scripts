@@ -1,3 +1,7 @@
+"""
+Note: This script is working as library for chamberview tests.
+"""
+
 from LANforge import LFRequest
 from LANforge import LFUtils
 from LANforge.lfcli_base import LFCliBase
@@ -16,13 +20,15 @@ class cv_test(LFCliBase):
         super().__init__(_lfjson_host=lfclient_host,
                          _lfjson_port=lfclient_port)
 
-    def create_test_config(self,config_name,text):
+    def create_test_config(self,config_name, blob_test_name, text):
         req_url = "/cli-json/add_text_blob"
         data = {
             "type": "Plugin-Settings",
-            "name": "Wifi-Capacity-"+config_name,
+            "name": str(blob_test_name+config_name),
             "text": text
         }
+
+        print("adding"+text+" "+"to test config")
         rsp = self.json_post(req_url, data)
         time.sleep(1)
 
