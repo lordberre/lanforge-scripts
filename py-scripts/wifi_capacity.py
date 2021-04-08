@@ -19,8 +19,6 @@ from cv_test_manager import cv_test as cvtest
 from chamberview import chamberview as cv
 from cvtest_reports import lanforge_reports as lf_rpt
 
-
-
 def main():
     parser = argparse.ArgumentParser(description="""use run_test to run tests""")
     parser.add_argument("-m", "--lfmgr", type=str,
