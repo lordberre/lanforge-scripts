@@ -1,5 +1,25 @@
 #!/usr/bin/env python3
 
+# Supports creating user-specified amount stations on multiple radios
+# Supports configuring upload and download requested rates and PDU sizes.
+# Supports generating KPI data for storing in influxdb (used by Graphana)
+# Supports generating connections with different ToS values.
+# Supports generating tcp and/or UDP traffic types.
+
+# Supports iterating over different PDU sizes
+# Supports iterating over different requested tx rates (configurable as total or per-connection value)
+# Supports iterating over attenuation values.
+#
+# Example config
+#
+# 10 stations on wiphy0, 1 station on wiphy2.  open-auth to ASUS_70 SSID
+# Configured to submit KPI info to influxdb.
+# ./test_l3_longevity.py --mgr localhost --endp_type 'lf_udp lf_tcp' --upstream_port 1.1.eth1 \
+#    --radio "radio==1.1.wiphy0 stations==10 ssid==ASUS_70 ssid_pw==[BLANK] security==open" \
+#    --radio "radio==1.1.wiphy2 stations==1 ssid==ASUS_70 ssid_pw==[BLANK] security==open" \
+#    --test_duration 30s --influx_host localhost --influx_port 8086 --influx_user lanforge \
+#    --influx_passwd lanforge --influx_db ben
+
 import sys
 import os
 
@@ -22,6 +42,7 @@ import re
 import csv
 import random
 
+# This class handles running the test and generating reports.
 class L3VariableTime(Realm):
     def __init__(self, 
                  endp_types, 
@@ -39,10 +60,17 @@ class L3VariableTime(Realm):
                  reset_port_enable_list,
                  reset_port_time_min_list,
                  reset_port_time_max_list,
-                 side_a_min_rate=56000, 
-                 side_a_max_rate=0,
-                 side_b_min_rate=56000, 
-                 side_b_max_rate=0,
+                 side_a_min_rate=[56000], 
+                 side_a_max_rate=[0],
+                 side_b_min_rate=[56000],
+                 side_b_max_rate=[0],
+                 side_a_min_pdu=["MTU"],
+                 side_a_max_pdu=[0],
+                 side_b_min_pdu=["MTU"],
+                 side_b_max_pdu=[0],
+                 rates_are_totals=False,
+                 attenuators=[],
+                 atten_vals=[],
                  number_template="00", 
                  test_duration="256s",
                  polling_interval="60s",
@@ -52,6 +80,7 @@ class L3VariableTime(Realm):
                  _exit_on_error=False,
                  _exit_on_fail=False,
                  _proxy_str=None,
+                 influxdb=None,
                  _capture_signal_list=[]):
         super().__init__(lfclient_host=lfclient_host,
                          lfclient_port=lfclient_port,
@@ -60,6 +89,7 @@ class L3VariableTime(Realm):
                          _exit_on_fail=_exit_on_fail,
                          _proxy_str=_proxy_str,
                          _capture_signal_list=_capture_signal_list)
+        self.influxdb = influxdb
         self.tos = tos.split()
         self.endp_types = endp_types.split()
         self.side_b = side_b
@@ -86,7 +116,36 @@ class L3VariableTime(Realm):
         self.csv_started = False
         self.epoch_time = int(time.time())
         self.debug = debug
-        
+
+        self.side_a_min_rate = side_a_min_rate
+        self.side_a_max_rate = side_a_max_rate
+        self.side_b_min_rate = side_b_min_rate
+        self.side_b_max_rate = side_b_max_rate
+
+        self.side_a_min_pdu = side_a_min_pdu
+        self.side_a_max_pdu = side_a_max_pdu
+        self.side_b_min_pdu = side_b_min_pdu
+        self.side_b_max_pdu = side_b_max_pdu
+
+        self.rates_are_totals = rates_are_totals
+        self.cx_count = 0
+        self.station_count = 0
+
+        self.attenuators = attenuators
+        self.atten_vals = atten_vals
+        if ((len(self.atten_vals) > 0) and (self.atten_vals[0] != -1) and (len(self.attenuators) == 0)):
+            print("ERROR:  Attenuation values configured, but no Attenuator EIDs specified.\n")
+            exit(1)
+
+        self.cx_profile.side_a_min_bps = side_a_min_rate[0]
+        self.cx_profile.side_a_max_bps = side_a_max_rate[0]
+        self.cx_profile.side_b_min_bps = side_b_min_rate[0]
+        self.cx_profile.side_b_max_bps = side_b_max_rate[0]
+
+        dur = self.duration_time_to_seconds(self.test_duration)
+                                                            
+        if (self.polling_interval_seconds > dur + 1):
+            self.polling_interval_seconds = dur - 1
 
         # Some checking on the duration
         #self.parse_time(self.test_duration)
@@ -123,16 +182,18 @@ class L3VariableTime(Realm):
         self.cx_profile.host = self.lfclient_host
         self.cx_profile.port = self.lfclient_port
         self.cx_profile.name_prefix = self.name_prefix
-        self.cx_profile.side_a_min_bps = side_a_min_rate
-        self.cx_profile.side_a_max_bps = side_a_max_rate
-        self.cx_profile.side_b_min_bps = side_b_min_rate
-        self.cx_profile.side_b_max_bps = side_b_max_rate
 
+    # Query all endpoints to generate rx and other stats, returned
+    # as an array of objects.
     def __get_rx_values(self):
-        endp_list = self.json_get("endp?fields=name,rx+bytes,rx+drop+%25", debug_=False)
+        endp_list = self.json_get("endp?fields=name,rx+rate,rx+bytes,rx+drop+%25", debug_=False)
         endp_rx_drop_map = {}
         endp_rx_map = {}
         our_endps = {}
+
+        total_ul = 0
+        total_dl = 0
+
         for e in self.multicast_profile.get_mc_names():
             our_endps[e] = e;
         for e in self.cx_profile.created_endp.keys():
@@ -147,15 +208,31 @@ class L3VariableTime(Realm):
                         for value_name, value_rx_drop in value.items():
                             if value_name == 'rx drop %':
                                 endp_rx_drop_map[item] = value_rx_drop
+                        for value_name, value_rx_bps in value.items():
+                            if value_name == 'rx rate':
+                                # This hack breaks for mcast
+                                if item.endswith("-A"):
+                                    total_dl += int(value_rx_bps)
+                                else:
+                                    total_ul += int(value_rx_bps)
 
-        return endp_rx_map, endp_rx_drop_map
+        return endp_rx_map, endp_rx_drop_map, total_dl, total_ul
 
+    # Common code to generate timestamp for CSV files.
     def time_stamp(self):
         return time.strftime('%m_%d_%Y_%H_%M_%S', time.localtime(self.epoch_time))
 
+    # Generate rx-dropped csv data
     def __record_rx_dropped_percent(self,rx_drop_percent):
 
-        csv_rx_drop_percent_data = [self.epoch_time, self.time_stamp(),'rx_drop_percent']
+        csv_rx_drop_percent_data = [self.epoch_time, self.time_stamp(),'rx_drop_percent',
+                                    self.cx_profile.side_a_min_bps, self.cx_profile.side_a_max_bps,
+                                    self.cx_profile.side_b_min_bps, self.cx_profile.side_b_max_bps,
+                                    self.cx_profile.side_a_min_pdu, self.cx_profile.side_a_max_pdu,
+                                    self.cx_profile.side_b_min_pdu, self.cx_profile.side_b_max_pdu,
+                                    ]
+
+        # Honestly, I don't understand this code. --Ben
         for key in [key for key in rx_drop_percent if "mtx" in key]: del rx_drop_percent[key]
 
         filtered_values = [v for _, v in rx_drop_percent.items() if v !=0]
@@ -176,6 +253,8 @@ class L3VariableTime(Realm):
 
         self.csv_add_row(csv_rx_drop_percent_data,self.csv_writer,self.csv_file)
 
+    # Compare last stats report with current stats report.  Generate CSV data lines
+    # for the various csv output files this test supports.
     def __compare_vals(self, old_list, new_list):
         passes = 0
         expected_passes = 0
@@ -184,8 +263,18 @@ class L3VariableTime(Realm):
         csv_rx_delta_dict = {}
 
         # this may need to be a list as more monitoring takes place.
-        csv_rx_row_data = [self.epoch_time, self.time_stamp(),'rx']
-        csv_rx_delta_row_data = [self.epoch_time, self.time_stamp(),'rx_delta']
+        csv_rx_row_data = [self.epoch_time, self.time_stamp(),'rx',
+                           self.cx_profile.side_a_min_bps, self.cx_profile.side_a_max_bps,
+                           self.cx_profile.side_b_min_bps, self.cx_profile.side_b_max_bps,
+                           self.cx_profile.side_a_min_pdu, self.cx_profile.side_a_max_pdu,
+                           self.cx_profile.side_b_min_pdu, self.cx_profile.side_b_max_pdu,
+                           ]
+        csv_rx_delta_row_data = [self.epoch_time, self.time_stamp(),'rx_delta',
+                                 self.cx_profile.side_a_min_bps, self.cx_profile.side_a_max_bps,
+                                 self.cx_profile.side_b_min_bps, self.cx_profile.side_b_max_bps,
+                                 self.cx_profile.side_a_min_pdu, self.cx_profile.side_a_max_pdu,
+                                 self.cx_profile.side_b_min_pdu, self.cx_profile.side_b_max_pdu,
+                                 ]
 
         for key in [key for key in old_list if "mtx" in key]: del old_list[key]
         for key in [key for key in new_list if "mtx" in key]: del new_list[key]
@@ -251,8 +340,8 @@ class L3VariableTime(Realm):
                 csv_rx_row_data.append(new_list[item])
                 csv_rx_delta_row_data.append(new_list[item] - old_list[item])
 
-            self.csv_add_row(csv_rx_row_data,self.csv_writer,self.csv_file)
-            self.csv_add_row(csv_rx_delta_row_data,self.csv_writer,self.csv_file)
+            self.csv_add_row(csv_rx_row_data, self.csv_writer, self.csv_file)
+            self.csv_add_row(csv_rx_delta_row_data, self.csv_writer, self.csv_file)
 
             if passes == expected_passes:
                 return True
@@ -264,6 +353,9 @@ class L3VariableTime(Realm):
             print("new-list:",new_list)
             return False
 
+    # Verify communication to cisco controller is as expected.
+    # Can add support for different controllers by editing this
+    # or creating similar methods for different controllers.
     def verify_controller(self):
         if self.args == None:
             return
@@ -363,7 +455,9 @@ class L3VariableTime(Realm):
         print("configure ap {} channel {} chan_width {}".format(self.args.cisco_ap,self.args.cisco_channel,self.args.cisco_chan_width))
         # Verify channel and channel width. 
 
-    
+
+    # This script supports resetting ports, allowing one to test AP/controller under data load
+    # while bouncing wifi stations.  Check here to see if we should reset ports.
     def reset_port_check(self):
         for station_profile in self.station_profiles:
             if station_profile.reset_port_extra_data['reset_port_enable']:
@@ -384,6 +478,7 @@ class L3VariableTime(Realm):
                         print("reset on radio {} station: {}".format(station_profile.add_sta_data['radio'],station_profile.station_names[port_to_reset]))
                         self.reset_port(station_profile.station_names[port_to_reset])
 
+    # Cleanup any older config that a previous run of this test may have created.
     def pre_cleanup(self):
         self.cx_profile.cleanup_prefix()
         self.multicast_profile.cleanup_prefix()
@@ -407,16 +502,32 @@ class L3VariableTime(Realm):
             count += 1
             time.sleep(5)
 
-    def build(self):
+    # Create stations and connections/endpoints.  If rebuild is true, then
+    # only update connections/endpoints.
+    def build(self, rebuild=False):
         index = 0
+        self.station_count = 0
+
+        if rebuild:
+            # if we are just re-applying new cx values, then no need to rebuild
+            # stations, so allow skipping it.
+            # Do clean cx lists so that when we re-apply them we get same endp name
+            # as we had previously
+            self.cx_profile.clean_cx_lists()
+            self.multicast_profile.clean_mc_lists()
+
         for station_profile in self.station_profiles:
-            station_profile.use_security(station_profile.security, station_profile.ssid, station_profile.ssid_pass)
-            station_profile.set_number_template(station_profile.number_template)
-            print("Creating stations")
+            if not rebuild:
+                station_profile.use_security(station_profile.security, station_profile.ssid, station_profile.ssid_pass)
+                station_profile.set_number_template(station_profile.number_template)
+                print("Creating stations on radio %s"%(self.radio_name_list[index]))
 
-            station_profile.create(radio=self.radio_name_list[index], sta_names_=self.station_lists[index], debug=self.debug, sleep_time=0)
-            index += 1
+                station_profile.create(radio=self.radio_name_list[index], sta_names_=self.station_lists[index], debug=self.debug, sleep_time=0)
+                index += 1
 
+            self.station_count += len(station_profile.station_names)
+
+            # Build/update connection types
             for etype in self.endp_types:
                 if etype == "mc_udp" or etype == "mc_udp6":
                     print("Creating Multicast connections for endpoint type: %s"%(etype))
@@ -426,8 +537,12 @@ class L3VariableTime(Realm):
                     for _tos in self.tos:
                         print("Creating connections for endpoint type: %s TOS: %s"%(etype, _tos))
                         self.cx_profile.create(endp_type=etype, side_a=station_profile.station_names, side_b=self.side_b, sleep_time=0, tos=_tos)
-        self._pass("PASS: Stations build finished")        
-        
+
+        self.cx_count = self.cx_profile.get_cx_count()
+
+        self._pass("PASS: Stations & CX build finished: created/updated: %s stations and %s connections."%(self.station_count, self.cx_count))        
+
+    # Run the main body of the test logic.
     def start(self, print_pass=False, print_fail=False):
         print("Bringing up stations")
         self.admin_up(self.side_b) 
@@ -444,53 +559,120 @@ class L3VariableTime(Realm):
         if self.wait_for_ip(temp_stations_list, timeout_sec=120):
             print("ip's acquired")
         else:
+            # TODO:  Allow fail and abort at this point.
             print("print failed to get IP's")
 
-        self.verify_controller()
-        print("Starting multicast traffic (if any configured)")
-        self.multicast_profile.start_mc(debug_=self.debug)
-        self.multicast_profile.refresh_mc(debug_=self.debug)
-        print("Starting layer-3 traffic (if any configured)")
-        self.cx_profile.start_cx()
-        self.cx_profile.refresh_cx()
+        # For each rate
+        rate_idx = 0
+        for ul in self.side_a_min_rate:
+            dl = self.side_b_min_rate[rate_idx]
+            rate_idx += 1
 
-        cur_time = datetime.datetime.now()
-        print("Getting initial values.")
-        old_rx_values, rx_drop_percent = self.__get_rx_values()
+            # For each pdu size
+            pdu_idx = 0
+            for ul_pdu in self.side_a_min_pdu:
+                dl_pdu = self.side_b_min_pdu[pdu_idx]
+                pdu_idx += 1
 
-        end_time = self.parse_time(self.test_duration) + cur_time
+                # Adjust rate to take into account the number of connections we have.
+                if self.cx_count > 1 and self.rates_are_totals:
+                    ul = int(ul / self.cx_count)
+                    dl = int(dl / self.cx_count)
 
-        print("Monitoring throughput for duration: %s"%(self.test_duration))
+                # Set rate and pdu size config
+                self.cx_profile.side_a_min_bps = ul
+                self.cx_profile.side_a_max_bps = ul
+                self.cx_profile.side_b_min_bps = dl
+                self.cx_profile.side_b_max_bps = dl
 
-        passes = 0
-        expected_passes = 0
-        while cur_time < end_time:
-            #interval_time = cur_time + datetime.timedelta(seconds=5)
-            interval_time = cur_time + datetime.timedelta(seconds=self.polling_interval_seconds)
-            #print("polling_interval_seconds {}".format(self.polling_interval_seconds))
-            while cur_time < interval_time:
-                cur_time = datetime.datetime.now()
-                self.reset_port_check()
-                time.sleep(1)
-            
-            self.epoch_time = int(time.time())
-            new_rx_values, rx_drop_percent = self.__get_rx_values()
+                self.cx_profile.side_a_min_pdu = ul_pdu
+                self.cx_profile.side_a_max_pdu = ul_pdu
+                self.cx_profile.side_b_min_pdu = dl_pdu
+                self.cx_profile.side_b_max_pdu = dl_pdu
 
-            expected_passes += 1
-            if self.__compare_vals(old_rx_values, new_rx_values):
-                passes += 1
-            else:
-                fail_msg = "FAIL: TIME: {} EPOCH: {} Not all stations increasked traffic".format(cur_time, self.epoch_time) 
-                self._fail(fail_msg, print_fail)
-            old_rx_values = new_rx_values
+                # Update connections with the new rate and pdu size config.
+                self.build(rebuild=True)
 
-            self.__record_rx_dropped_percent(rx_drop_percent)
+                for atten_val in self.atten_vals:
+                    if atten_val != -1:
+                        for atten_idx in self.attenuators:
+                            self.set_atten(atten_idx, atten_val)
 
-            cur_time = datetime.datetime.now()
+                    self.verify_controller()
+                    print("Starting multicast traffic (if any configured)")
+                    self.multicast_profile.start_mc(debug_=self.debug)
+                    self.multicast_profile.refresh_mc(debug_=self.debug)
+                    print("Starting layer-3 traffic (if any configured)")
+                    self.cx_profile.start_cx()
+                    self.cx_profile.refresh_cx()
 
-        if passes == expected_passes:
-            self._pass("PASS: All tests passed", print_pass)
+                    cur_time = datetime.datetime.now()
+                    print("Getting initial values.")
+                    old_rx_values, rx_drop_percent, total_dl_bps, total_ul_bps = self.__get_rx_values()
 
+                    end_time = self.parse_time(self.test_duration) + cur_time
+
+                    print("Monitoring throughput for duration: %s"%(self.test_duration))
+
+                    # Monitor test for the interval duration.
+                    passes = 0
+                    expected_passes = 0
+                    total_dl_bps = 0
+                    total_ul_bps = 0
+                    while cur_time < end_time:
+                        #interval_time = cur_time + datetime.timedelta(seconds=5)
+                        interval_time = cur_time + datetime.timedelta(seconds=self.polling_interval_seconds)
+                        #print("polling_interval_seconds {}".format(self.polling_interval_seconds))
+                        while cur_time < interval_time:
+                            cur_time = datetime.datetime.now()
+                            self.reset_port_check()
+                            time.sleep(1)
+
+                        self.epoch_time = int(time.time())
+                        new_rx_values, rx_drop_percent, total_dl_bps, total_ul_bps = self.__get_rx_values()
+
+                        expected_passes += 1
+                        if self.__compare_vals(old_rx_values, new_rx_values):
+                            passes += 1
+                        else:
+                            fail_msg = "FAIL: TIME: {} EPOCH: {} Not all stations increased traffic".format(cur_time, self.epoch_time) 
+                            self._fail(fail_msg, print_fail)
+                        old_rx_values = new_rx_values
+
+                        self.__record_rx_dropped_percent(rx_drop_percent)
+
+                    # At end of test step, record KPI information.
+                    self.record_kpi(len(temp_stations_list), ul, dl, ul_pdu, dl_pdu, total_dl_bps, total_ul_bps)
+
+                    # Stop connections.
+                    self.cx_profile.stop_cx();
+                    self.multicast_profile.stop_mc();
+
+                    cur_time = datetime.datetime.now()
+
+                    if passes == expected_passes:
+                            self._pass("PASS: Requested-Rate: %s <-> %s  PDU: %s <-> %s   All tests passed" % (ul, dl, ul_pdu, dl_pdu), print_pass)
+
+    # Submit data to the influx db if configured to do so.
+    def record_kpi(self, sta_count, ul, dl, ul_pdu, dl_pdu, total_dl_bps, total_ul_bps):
+        if self.influxdb == None:
+            return
+
+        tags=dict()
+        tags['requested-ul-bps'] = ul
+        tags['requested-ul-bps'] = dl
+        tags['ul-pdu-size'] = ul_pdu
+        tags['dl-pdu-size'] = dl_pdu
+        tags['station-count'] = sta_count
+        tags["script"] = 'test_l3_longevity'
+
+        time = str(datetime.datetime.utcnow().isoformat())
+
+        self.influxdb.post_to_influx("total-download-bps", total_dl_bps, tags, time)
+        self.influxdb.post_to_influx("total-upload-bps", total_ul_bps, tags, time)
+        self.influxdb.post_to_influx("total-bi-directional-bps", total_ul_bps + total_dl_bps, tags, time)
+
+    # Stop traffic and admin down stations.
     def stop(self):
         self.cx_profile.stop_cx()
         self.multicast_profile.stop_mc()
@@ -498,14 +680,19 @@ class L3VariableTime(Realm):
             for station_name in station_list:
                 self.admin_down(station_name)
 
+    # Remove traffic connections and stations.
     def cleanup(self):
         self.cx_profile.cleanup()
         self.multicast_profile.cleanup()
         for station_profile in self.station_profiles:
             station_profile.cleanup()
-                                        
+
+    # CSV column headers.
     def csv_generate_column_headers(self):
-        csv_rx_headers = ['Time epoch','Time','Monitor']
+        csv_rx_headers = ['Time epoch','Time','Monitor',
+                          'UL-Min-Requested','UL-Max-Requested','DL-Min-Requested','DL-Max-Requested',
+                          'UL-Min-PDU','UL-Max-PDU','DL-Min-PDU','DL-Max-PDU',
+                          ]
         for i in range(1,6):
             csv_rx_headers.append("least_rx_data_bytes_{}".format(i))
         for i in range(1,6):
@@ -513,6 +700,7 @@ class L3VariableTime(Realm):
         csv_rx_headers.append("average_rx_data_bytes")
         return csv_rx_headers
 
+    # Write initial headers to csv file.
     def csv_add_column_headers(self,headers):
         if self.csv_file is not None:
             self.csv_writer.writerow(headers)
@@ -528,6 +716,9 @@ class L3VariableTime(Realm):
             writer.writerow(row)
             csv_file.flush()
 
+    # End of the main class.
+
+# Check some input values.
 def valid_endp_types(_endp_type):
     etypes = _endp_type.split()
     for endp_type in etypes:
@@ -537,6 +728,8 @@ def valid_endp_types(_endp_type):
             exit(1)
     return _endp_type
 
+
+# Starting point for running this from cmd line.
 def main():
     lfjson_host = "localhost"
     lfjson_port = 8080
@@ -576,8 +769,13 @@ python3 test_l3_longevity.py --cisco_ctlr <IP> --cisco_dfs True/False --mgr <Lan
     --cisco_channel <channel> --cisco_chan_width <20,40,80,120> --endp_type 'lf_udp lf_tcp mc_udp' --upstream_port <1.ethX> 
     --radio "radio==<radio 0 > stations==<number stations> ssid==<ssid> ssid_pw==<ssid password> security==<wpa2 , open>" 
     --radio "radio==<radio 1 > stations==<number stations> ssid==<ssid> ssid_pw==<ssid password> security==<wpa2 , open>" 
-    --duration 5m
+    --test_duration 5m
 
+# UDP bi-directional test, no use of controller.
+/test_l3_longevity.py --mgr localhost --endp_type 'lf_udp lf_tcp' --upstream_port 1.1.eth1 \
+  --radio "radio==1.1.wiphy0 stations==10 ssid==ASUS_70 ssid_pw==[BLANK] security==open" \
+  --radio "radio==1.1.wiphy2 stations==1 ssid==ASUS_70 ssid_pw==[BLANK] security==open" \
+  --test_duration 30s
 
 <duration>: number followed by one of the following 
 d - days
@@ -694,8 +892,29 @@ python3 test_l3_longevity.py --cisco_ctlr 192.168.100.112 --cisco_dfs True --mgr
     #parser.add_argument('-c','--csv_output', help="Generate csv output", default=False) 
 
     parser.add_argument('-r','--radio', action='append', nargs=1, help='--radio  \
-                        \"radio==<number_of_wiphy stations=<=number of stations> ssid==<ssid> ssid_pw==<ssid password> security==<security>\" '\
-                        , required=True)
+                        \"radio==<number_of_wiphy stations=<=number of stations> ssid==<ssid> ssid_pw==<ssid password> security==<security>\" ',
+                        required=True)
+
+    parser.add_argument('-amr','--side_a_min_bps',
+                        help='--side_a_min_bps, requested downstream min tx rate, comma separated list for multiple iterations.  Default 256k', default="256000")
+    parser.add_argument('-amp','--side_a_min_pdu',
+                        help='--side_a_min_pdu, downstream pdu size, comma separated list for multiple iterations.  Default MTU', default="MTU")
+    parser.add_argument('-bmr','--side_b_min_bps',
+                        help='--side_b_min_bps, requested upstream min tx rate, comma separated list for multiple iterations.  Default 256000', default="256000")
+    parser.add_argument('-bmp','--side_b_min_pdu',
+                        help='--side_b_min_pdu, upstream pdu size, comma separated list for multiple iterations. Default MTU', default="MTU")
+    parser.add_argument("--rates_are_totals", default=False,
+                        help="Treat configured rates as totals instead of using the un-modified rate for every connection.", action='store_true')
+
+    parser.add_argument('--attenuators', help='--attenuators,  comma separated list of attenuator module eids:  shelf.resource.atten-serno.atten-idx', default="")
+    parser.add_argument('--atten_vals', help='--atten_vals,  comma separated list of attenuator settings in ddb units (1/10 of db)', default="")
+
+    parser.add_argument('--influx_host', help='Hostname for the Influx database')
+    parser.add_argument('--influx_port', help='IP Port for the Influx database', default=8086)
+    parser.add_argument('--influx_org', help='Organization for the Influx database')
+    parser.add_argument('--influx_token', help='Token for the Influx database')
+    parser.add_argument('--influx_bucket', help='Name of the Influx bucket')
+
     parser.add_argument("--cap_ctl_out",  help="--cap_ctl_out , switch the cisco controller output will be captured", action='store_true')
     parser.add_argument("--wait",  help="--wait <time> , time to wait at the end of the test", default='0')
 
@@ -726,7 +945,18 @@ python3 test_l3_longevity.py --cisco_ctlr 192.168.100.112 --cisco_dfs True --mgr
         current_time = time.strftime("%m_%d_%Y_%H_%M_%S", time.localtime())
         csv_outfile = "{}_{}.csv".format(args.csv_outfile,current_time)
         print("csv output file : {}".format(csv_outfile))
-        
+
+    influxdb = None
+    if args.influx_bucket is not None:
+        from influx2 import RecordInflux
+        influxdb = RecordInflux(_lfjson_host=lfjson_host,
+                                _lfjson_port=lfjson_port,
+                                _influx_host=args.influx_host,
+                                _influx_port=args.influx_port,
+                                _influx_org=args.influx_org,
+                                _influx_token=args.influx_token,
+                                _influx_bucket=args.influx_bucket)
+
 
     MAX_NUMBER_OF_STATIONS = 1000
     
@@ -776,7 +1006,6 @@ python3 test_l3_longevity.py --cisco_ctlr 192.168.100.112 --cisco_dfs True --mgr
             reset_port_time_max_list.append('0s')
 
 
-
     index = 0
     station_lists = []
     for (radio_name_, number_of_stations_per_radio_) in zip(radio_name_list,number_of_stations_per_radio_list):
@@ -790,6 +1019,24 @@ python3 test_l3_longevity.py --cisco_ctlr 192.168.100.112 --cisco_dfs True --mgr
         index += 1
 
     #print("endp-types: %s"%(endp_types))
+
+    ul_rates = args.side_a_min_bps.split(",")
+    dl_rates = args.side_b_min_bps.split(",")
+    ul_pdus = args.side_a_min_pdu.split(",")
+    dl_pdus = args.side_b_min_pdu.split(",")
+    if args.attenuators == "":
+        attenuators = []
+    else:
+        attenuators = args.attenuators.split(",")
+    if (args.atten_vals == ""):
+        atten_vals = [-1]
+    else:
+        atten_vals = args.atten_vals.split(",")
+
+    if (len(ul_rates) != len(dl_rates)):
+        print("ERROR:  ul_rates %s and dl_rates %s arrays must be same length\n" %(len(ul_rates), len(dl_rates)))
+    if (len(ul_pdus) != len(dl_pdus)):
+        print("ERROR:  ul_pdus %s and dl_pdus %s arrays must be same length\n" %(len(ul_rates), len(dl_rates)))
 
     ip_var_test = L3VariableTime(
                                     args=args,
@@ -811,10 +1058,16 @@ python3 test_l3_longevity.py --cisco_ctlr 192.168.100.112 --cisco_dfs True --mgr
                                     reset_port_enable_list=reset_port_enable_list,
                                     reset_port_time_min_list=reset_port_time_min_list,
                                     reset_port_time_max_list=reset_port_time_max_list,
-                                    side_a_min_rate=256000, 
-                                    side_b_min_rate=256000, 
-                                    debug=debug, 
-                                    outfile=csv_outfile)
+                                    side_a_min_rate=ul_rates,
+                                    side_b_min_rate=dl_rates,
+                                    side_a_min_pdu=ul_pdus,
+                                    side_b_min_pdu=dl_pdus,
+                                    rates_are_totals=args.rates_are_totals,
+                                    attenuators=attenuators,
+                                    atten_vals=atten_vals,
+                                    debug=debug,
+                                    outfile=csv_outfile,
+                                    influxdb=influxdb)
 
     ip_var_test.pre_cleanup()
 

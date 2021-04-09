@@ -19,6 +19,7 @@ from wifi_monitor_profile import WifiMonitor
 from gen_cxprofile import GenCXProfile
 from qvlan_profile import QVLANProfile
 from port_utils import PortUtils
+from lfdata import LFDataCollection
 # ---- ---- ---- ---- Other Imports ---- ---- ---- ----
 import re
 import time
@@ -460,11 +461,29 @@ class Realm(LFCliBase):
 
         return sta_list
 
+    # Returns all attenuators
+    def atten_list(self):
+        response = super().json_get("/atten/list")
+        return response['attenuators']
+
+    # EID is shelf.resource.atten-serno.atten-idx
+    def set_atten(self, eid, atten_ddb):
+        eid_toks = self.name_to_eid(eid, non_port=True)
+        req_url = "cli-json/set_attenuator"
+        data = {
+            "shelf": eid_toks[0],
+            "resource": eid_toks[1],
+            "serno": eid_toks[2],
+            "atten_idx":eid_toks[3],
+            "val":atten_ddb,
+            }
+        self.json_post(req_url, data)
+
     # removes port by eid/eidpn
     def remove_vlan_by_eid(self, eid):
         if (eid is None) or ("" == eid):
             raise ValueError("removeVlanByEid wants eid like 1.1.sta0 but given[%s]" % eid)
-        hunks = eid.split('.')
+        hunks = self.name_to_eid(eid)
         # print("- - - - - - - - - - - - - - - - -")
         # pprint(hunks)
         # pprint(self.lfclient_url)
@@ -544,12 +563,12 @@ class Realm(LFCliBase):
 
         return matched_map
 
-    def name_to_eid(self, eid, debug=False):
+    def name_to_eid(self, eid, debug=False, non_port=False):
         if debug:
             self.logg(level="debug", mesg="name_to_eid: "+str(eid))
         if (type(eid) is list) or (type(eid) is tuple):
             return eid
-        return LFUtils.name_to_eid(eid)
+        return LFUtils.name_to_eid(eid, non_port=non_port)
 
     def wait_for_ip(self, station_list=None, ipv4=True, ipv6=False, timeout_sec=360, debug=False):
         if not (ipv4 or ipv6):
@@ -920,6 +939,9 @@ class Realm(LFCliBase):
         #     import test_group_profile2
         #     test_group_profile = test_group_profile2.TestGroupProfile2(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
         return test_group_profile
+
+    def new_lf_data_collection(self):
+        return LFDataCollection(local_realm=self)
 
 class PacketFilter():
 

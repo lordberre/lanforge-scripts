@@ -58,6 +58,9 @@ class L3CXProfile(LFCliBase):
         self.name_prefix = name_prefix_
         self.number_template = number_template_
 
+    def get_cx_count(self):
+        return len(self.created_cx.keys())
+
     def get_cx_names(self):
         return self.created_cx.keys()
 
@@ -310,6 +313,15 @@ class L3CXProfile(LFCliBase):
                     if self.debug:
                         print("Cleaning endpoint: %s"%(ename))
                     self.local_realm.rm_endp(self.created_cx[cx_name][side])
+
+        self.clean_cx_lists()
+
+    def clean_cx_lists(self):
+        # Clean out our local lists, this by itself does NOT remove anything from LANforge manager.
+        # but, if you are trying to modify existing connections, then clearing these arrays and
+        # re-calling 'create' will do the trick.
+        created_cx = {}
+        created_endp = {}
 
     def create(self, endp_type, side_a, side_b, sleep_time=0.03, suppress_related_commands=None, debug_=False,
                tos=None):
