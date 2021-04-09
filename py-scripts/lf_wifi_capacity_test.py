@@ -1,5 +1,9 @@
 """
-use to run WiFi Capacity test.
+Note: This is a test file which will run a wifi capacity test.
+    ex. on how to run this script:
+         ./lf_wifi_capacity_test.py -m "localhost -o "8080" -t "WiFi Capacity" -i "test_instance" -c "config_file"
+          -r y -b "1" -l 1 -p "TCP-IPv4" -d 5000
+    if -r flag is set to y. at end of the script you will receive a report dir. from lanforge to your local machine
 """
 import sys
 import os
@@ -16,16 +20,16 @@ if 'py-json' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
 
 from cv_test_manager import cv_test as cvtest
-from chamberview import chamberview as cv
-from cvtest_reports import lanforge_reports as lf_rpt
+from cv_commands import chamberview as cv
+from cv_test_reports import lanforge_reports as lf_rpt
 
 def main():
     parser = argparse.ArgumentParser(description="""use run_test to run tests""")
-    parser.add_argument("-m", "--lfmgr", type=str,
+    parser.add_argument("-m", "--lfmgr", type=str, default="localhost",
                         help="address of the LANforge GUI machine (localhost is default)")
-    parser.add_argument("-o", "--port", type=int,
+    parser.add_argument("-o", "--port", type=int, default="8080",
                         help="IP Port the LANforge GUI is listening on (8080 is default)")
-    parser.add_argument("-t", "--test_name", type=str,
+    parser.add_argument("-t", "--test_name", type=str, default="WiFi Capacity",
                         help="name of test to be run ex. \"WiFi Capacity\"")
     parser.add_argument("-i", "--instance_name", type=str, required=True,
                         help="name of test instance (by default: test_ref)")
@@ -43,41 +47,23 @@ def main():
                         help="config duration (by default: 5000)")
 
     args = parser.parse_args()
-
-    # This is user config.
-    config_name = "config_wifi_capacity"  # Test Config Name (new)
-    instance_name = "test_ref"  # Test Instance name
-    test_name = "WiFi Capacity"  # Test name
-    lf_host = "192.168.200.21"
-    lf_hostport = "8080"
-    pull_report = "y"
-    # Test Config
-    batch_size = "1"
-    loop_iter = "1"
-    protocol = "TCP-IPv4"
-    duration = " 5000"
-
     if args.lfmgr is not None:
         lf_host = args.lfmgr
     if args.port is not None:
         lf_hostport = args.port
-    if args.test_name is not None:
-        test_name = args.test_name
-    if args.instance_name is not None:
-        instance_name = args.instance_name
-    if args.config_name is not None:
-        config_name = args.config_name
-    if args.batch_size is not None:
-        batch_size = args.batch_size
-    if  args.loop_iter is not  None:
-        loop_iter = args.loop_iter
-    if args.protocol is not None:
-        protocol = args.protocol
-    if args.duration is not None:
-        duration = args.duration
-    if args.pull_report is not None:
-        pull_report = args.pull_report
 
+    try:
+        test_name = args.test_name
+        instance_name = args.instance_name
+        config_name = args.config_name
+        batch_size = args.batch_size
+        loop_iter = args.loop_iter
+        protocol = args.protocol
+        duration = args.duration
+        pull_report = args.pull_report
+    except:
+        print("Wrong arguments entered")
+        exit(1)
 
 
     # Test related settings

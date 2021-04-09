@@ -1,10 +1,14 @@
-#!/usr/bin/env python3
-# ---- ---- ---- ---- LANforge Base Imports ---- ---- ---- ----
-from LANforge import LFRequest
-from LANforge import LFUtils
-from LANforge.lfcli_base import LFCliBase
-import datetime
+"""
+Note: This is a library file used to create a chamber view scenario.
+    import this file as showed in create_chamberview.py to create a scenario
+"""
+
 import time
+
+# !/usr/bin/env python3
+# ---- ---- ---- ---- LANforge Base Imports ---- ---- ---- ----
+from LANforge.lfcli_base import LFCliBase
+
 
 class chamberview(LFCliBase):
     def __init__(self,
@@ -27,7 +31,7 @@ class chamberview(LFCliBase):
             "name": scenario_name,
             "text": text_blob
         }
-        print(data)
+
         rsp = self.json_post(req_url, data)
         time.sleep(2)
 
