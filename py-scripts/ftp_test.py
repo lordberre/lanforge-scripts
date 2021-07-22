@@ -4,7 +4,6 @@
     License: Free to distribute and modify. LANforge systems must be licensed.
 """
 import sys
-from ftp_html_latest import *
 import paramiko
 
 if sys.version_info[0] != 3:
@@ -18,6 +17,7 @@ from LANforge.lfcli_base import LFCliBase
 from LANforge.LFUtils import *
 import realm
 import argparse
+import datetime
 from datetime import datetime
 import time
 import os
@@ -271,7 +271,7 @@ class FtpTest(LFCliBase):
         while list_of_time.count(0) != 0:
 
             # run script upto given time
-            if str(datetime.now() - time1) >= self.duration:
+            if str(datetime.datetime.now() - time1) >= self.duration:
                 break
 
             for i in range(self.num_sta):
@@ -450,25 +450,164 @@ class FtpTest(LFCliBase):
                 table_dict_time[self.column_head[i]] = list_data
                 i = i + 1
 
+        return table_dict_time
 
+    def generate_graph_time(self,result_data, x_axis, band, size):
+        '''Method for generating graph for time'''
+
+        num_stations = result_data[1]["num_stations"]
+        dataset = []
+        labels = []
+        color = []
+        graph_name = ""
+        graph_description = ""
+        count = 0
+        for data in result_data.values():
+            if data["band"] == band and data["file_size"] == size and data["direction"] == "Download":
+                dataset.append(data["time"])
+                labels.append("Download")
+                color.append("Orange")
+                graph_name = "File size " + size + " " + str(
+                    num_stations) + " Clients " + band + "-File Download Times(secs)"
+                graph_description = "Out of " + str(data["num_stations"]) + " clients, " + str(
+                    data["num_stations"] - data["time"].count(0)) + " are able to download " + "within " + str(
+                    data["duration"]) + " min."
+                count = count + 1
+            if data["band"] == band and data["file_size"] == size and data["direction"] == "Upload":
+                dataset.append(data["time"])
+                labels.append("Upload")
+                color.append("Blue")
+                graph_name = "File size " + size + " " + str(
+                    num_stations) + " Clients " + band + "-File Upload Times(secs)"
+                graph_description = graph_description + "Out of " + str(data["num_stations"]) + " clients, " + str(
+                    data["num_stations"] - data["time"].count(0)) + " are able to upload " + "within " + str(
+                    data["duration"]) + " min."
+                count = count + 1
+        if count == 2:
+            graph_name = "File size " + size + " " + str(
+                num_stations) + " Clients " + band + "-File Download and Upload Times(secs)"
+
+        self.report.set_obj_html(graph_name, graph_description)
+        self.report.build_objective()
+        image_name = "image"+band+size
+        x_axis_name = "Stations"
+        y_axis_name = "Time in seconds"
+        self.bar_graph(x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name)
+
+    def generate_graph_throughput(self, result_data, x_axis, band, size):
+        '''Method for generating graph for time'''
+
+        num_stations = result_data[1]["num_stations"]
+        dataset = []
+        labels = []
+        color = []
+        graph_name = ""
+        graph_description = ""
+        count = 0
+        for data in result_data.values():
+            if data["band"] == band and data["file_size"] == size and data["direction"] == "Download":
+                dataset.append(data["throughput"])
+                labels.append("Download")
+                color.append("Orange")
+                graph_name = "File size " + size + " " + str(
+                    num_stations) + " Clients " + band + "-File Download Throughput(MB)"
+                graph_description = str(data["num_stations"] - data["time"].count(0)) + " clients are able to download " + data["file_size"] + " file."
+                count = count + 1
+            if data["band"] == band and data["file_size"] == size and data["direction"] == "Upload":
+                dataset.append(data["throughput"])
+                labels.append("Upload")
+                color.append("Blue")
+                graph_name = "File size " + size + " " + str(
+                    num_stations) + " Clients " + band + "-File Upload Throughput(MB)"
+                graph_description = graph_description + str(data["num_stations"] - data["time"].count(0)) + " clients are able to upload " + data["file_size"] + " file."
+                count = count + 1
+        if count == 2:
+            graph_name = "File size " + size + " " + str(
+                num_stations) + " Clients " + band + "-File Download and Upload Throughput(MB)"
+
+        self.report.set_obj_html(graph_name, graph_description)
+        self.report.build_objective()
+        image_name = "image" + band + size + "throughput"
+        x_axis_name = "Stations"
+        y_axis_name = "Throughput in MB"
+        self.bar_graph(x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name)
+
+    def bar_graph(self, x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name):
+        '''This Method will plot bar graph'''
+
+        graph = lf_bar_graph(_data_set=dataset,
+                             _xaxis_name=x_axis_name,
+                             _yaxis_name=y_axis_name,
+                             _xaxis_categories=x_axis,
+                             _label=labels,
+                             _graph_image_name=image_name,
+                             _figsize=(18, 6),
+                             _color=color,
+                             _show_bar_value=False,
+                             _xaxis_step=None,
+                             _color_edge=None)
+
+        graph_png = graph.build_bar_graph()
+
+        print("graph name {}".format(graph_png))
+
+        self.report.set_graph_image(graph_png)
+        # need to move the graph image to the results
+        self.report.move_graph_image()
+
+        self.report.build_graph()
+
+    def generate_graph(self, result_data):
+        '''This method will generate bar graph of time and throughput'''
+
+        x_axis = []
+        for i in range(1, self.num_stations + 1, 1):
+            x_axis.append(i)
+
+        for b in self.bands:
+            for size in self.file_sizes:
+                self.generate_graph_time(result_data, x_axis, b, size)
+                self.generate_graph_throughput(result_data, x_axis, b, size)
 
     def generate_report(self, ftp_data, date,test_setup_info, input_setup_info):
         '''Method for generate the report'''
 
-        report = lf_report(_results_dir_name="ftp_test")
-        report.set_title("FTP Test")
-        report.set_date(date)
-        report.build_banner()
-        report.set_table_title("Test Setup Information")
-        report.build_table_title()
-        report.test_setup_table(value="Device under test", test_setup_data=test_setup_info)
+        self.report = lf_report(_results_dir_name="ftp_test")
+        self.report.set_title("FTP Test")
+        self.report.set_date(date)
+        self.report.build_banner()
+        self.report.set_table_title("Test Setup Information")
+        self.report.build_table_title()
+        self.report.test_setup_table(value="Device under test", test_setup_data=test_setup_info)
 
-        report.set_obj_html("Objective",
+        self.report.set_obj_html("Objective",
                             "This FTP Test is used to Verify that N clients connected on Specified band and can simultaneously download some amount of file from FTP server and measuring the time taken by client to Download/Upload the file.")
-        report.build_objective()
-        report.set_obj_html("PASS/FAIL Results",
+        self.report.build_objective()
+        self.report.set_obj_html("PASS/FAIL Results",
                             "This Table will give Pass/Fail results.")
-        report.build_objective()
+        self.report.build_objective()
+        dataframe1 = pd.DataFrame(self.add_pass_fail_table(ftp_data))
+        self.report.set_table_dataframe(dataframe1)
+        self.report.build_table()
+        self.report.set_obj_html("File Download/Upload Time (sec)",
+                            "This Table will  give FTP Download/Upload Time of Clients.")
+        self.report.build_objective()
+        dataframe2 = pd.DataFrame(self.download_upload_time_table(ftp_data))
+        self.report.set_table_dataframe(dataframe2)
+        self.report.build_table()
+        self.generate_graph(ftp_data)
+        self.report.set_table_title("Test input Information")
+        self.report.build_table_title()
+        self.report.test_setup_table(value="Information", test_setup_data=input_setup_info)
+        html_file = self.report.write_html()
+        print("returned file {}".format(html_file))
+        print(html_file)
+        self.report.write_pdf()
+
+
+
+
+
 
 
 def main():
@@ -499,7 +638,7 @@ def main():
     args = parser.parse_args()
 
     # 1st time stamp for test duration
-    time_stamp1 = datetime.now()
+    time_stamp1 = datetime.datetime.now()
 
     # use for creating ftp_test dictionary
     iteraration_num = 0
@@ -542,7 +681,7 @@ def main():
                 # Start Test
                 obj = FtpTest(lfclient_host=args.mgr,
                               lfclient_port=args.mgr_port,
-                              upstream=upstream_port,
+                              upstream=args.upstream_port,
                               dut_ssid=args.ssid,
                               dut_passwd=args.passwd,
                               dut_security=args.security,
@@ -567,7 +706,7 @@ def main():
                     exit(1)
 
                 # First time stamp
-                time1 = datetime.now()
+                time1 = datetime.datetime.now()
 
                 obj.start(False, False)
 
@@ -585,25 +724,30 @@ def main():
                 obj.postcleanup()
 
     # 2nd time stamp for test duration
-    time_stamp2 = datetime.now()
+    time_stamp2 = datetime.datetime.now()
 
     # total time for test duration
     test_duration = str(time_stamp2 - time_stamp1)[:-7]
 
-    date = str(datetime.now()).split(",")[0].replace(" ", "-").split(".")[0]
+    date = str(datetime.datetime.now()).split(",")[0].replace(" ", "-").split(".")[0]
 
     print(ftp_data)
 
     test_setup_info = {
         "AP Name": args.ap_name,
         "SSID": args.ssid,
-        "Number of Stations": args.num_stations,
         "Test Duration": test_duration
     }
 
     input_setup_info = {
         "IP": args.ap_ip,
-        "user": "root",
+        "File Size": args.file_sizes,
+        "Bands": args.bands,
+        "Direction": args.directions,
+        "Stations": args.num_stations,
+        "Upstream": args.upstream_port,
+        "SSID": args.ssid,
+        "Security": args.security,
         "Contact": "support@candelatech.com"
     }
     obj.generate_report(ftp_data,
