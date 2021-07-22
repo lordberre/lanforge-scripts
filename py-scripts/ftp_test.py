@@ -380,39 +380,77 @@ class FtpTest(LFCliBase):
 
         self.column_head = []
         self.rows_head = []
-        bands = result_data[1]["bands"]
-        file_sizes = result_data[1]["file_sizes"]
-        directions = result_data[1]["directions"]
+        self.bands = result_data[1]["bands"]
+        self.file_sizes = result_data[1]["file_sizes"]
+        self.directions = result_data[1]["directions"]
+        self.num_stations = result_data[1]["num_stations"]
 
-        for size in file_sizes:
-            for direction in directions:
+        for size in self.file_sizes:
+            for direction in self.directions:
                 self.column_head.append(size + " " + direction)
-        for band in bands:
+        for band in self.bands:
             if band != "Both":
-                self.rows_head.append(str(num_stations) + " Clients-" + band)
+                self.rows_head.append(str(self.num_stations) + " Clients-" + band)
             else:
-                self.rows_head.append(str(num_stations // 2) + "+" + str(num_stations // 2) + " Clients-2.4G+5G")
+                self.rows_head.append(str(self.num_stations // 2) + "+" + str(self.num_stations // 2) + " Clients-2.4G+5G")
 
         #creating dict for a table
         table_dict_pass_fail = {}
-
-        list_of_col_val = []
-
-        for i in range(len(self.column_head)):
-            list_of_col_val.append([])
-
+        i = 0
         table_dict_pass_fail[""] = self.rows_head
-
-        for b in bands:
-            i = 0
-            for size in file_sizes:
-                j = 0
-                for d in directions:
+        for size in self.file_sizes:
+            for d in self.directions:
+                list_data = []
+                for b in self.bands:
                     for data in result_data.values():
                         if data["band"] == b and data["direction"] == d and data["file_size"] == size:
-                            if data["result"] == "Pass":
+                            list_data.append(data["result"])
 
-                            elif data["result"] == "Fail":
+                table_dict_pass_fail[self.column_head[i]] = list_data
+                i = i + 1
+
+        return table_dict_pass_fail
+
+    def download_upload_time_table(self,result_data):
+        '''Method for create dict for download/upload table for report'''
+
+        table_dict_time = {}
+        string_data = ""
+        i = 0
+        table_dict_time[""] = self.rows_head
+
+        for size in self.file_sizes:
+            for d in self.directions:
+                list_data = []
+                for b in self.bands:
+                    for data in result_data.values():
+                        data_time = data['time']
+                        if data_time.count(0) == 0:
+                            Min = min(data_time)
+                            Max = max(data_time)
+                            Sum = int(sum(data_time))
+                            Len = len(data_time)
+                            Avg = round(Sum / Len, 2)
+                        elif data_time.count(0) == len(data_time):
+                            Min = "-"
+                            Max = "-"
+                            Avg = "-"
+                        else:
+                            data_time = [i for i in data_time if i != 0]
+                            Min = min(data_time)
+                            Max = max(data_time)
+                            Sum = int(sum(data_time))
+                            Len = len(data_time)
+                            Avg = round(Sum / Len, 2)
+                        string_data = "Min=" + str(Min) + ",Max=" + str(Max) + ",Avg=" + str(Avg) + " (sec)"
+
+                        if data["band"] == b and data["direction"] == d and data["file_size"] == size:
+                            list_data.append(string_data)
+
+                table_dict_time[self.column_head[i]] = list_data
+                i = i + 1
+
+
 
     def generate_report(self, ftp_data, date,test_setup_info, input_setup_info):
         '''Method for generate the report'''
