@@ -243,9 +243,10 @@ class VideoStreaming(Realm):
     def file_create(self):
         change_path = os.path.dirname(os.path.abspath(__file__))
         os.chdir('/usr/local/lanforge/nginx/html/')
-        if os.path.isfile("/usr/local/lanforge/nginx/html/video.txt"):
-            os.system("sudo rm /usr/local/lanforge/nginx/html/video.txt")
-        os.system("sudo fallocate -l " + self.file_size + " /usr/local/lanforge/nginx/html/video.txt")
+        #192.168.208.92/video.txt
+        if os.path.isfile("/usr/local/lanforge/nginx/html"+self.url[self.url.index('/'):]):
+            os.system("sudo rm /usr/local/lanforge/nginx/html"+self.url[self.url.index('/'):])
+        os.system("sudo fallocate -l " + self.file_size + " /usr/local/lanforge/nginx/html"+self.url[self.url.index('/'):])
         print("File creation done", self.file_size)
         os.chdir(change_path)
 
@@ -302,12 +303,17 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
                 yield f"{i} Mbps"
     speeds = list(buffer[bands[0]].keys())
     data_rate = list(emu(emu_rate))
-    pass_fail,info = [],[]
+    pass_fail,info,pas_fail_disp = [],[],[]
     for bnds in buffer:
         for spd in buffer[bnds]:
-            if max(buffer[bnds][spd].values()) < expt_stal:
+            if max(buffer[bnds][spd].values()) <= expt_stal:
                 pass_fail.append('Pass')
                 info.append(f"Station Pass : {sta_cnt}")
+                pas_fail_disp.append("All the stations got buffer less than or equal to expected stalls")
+            elif min(buffer[bnds][spd].values()) > expt_stal:
+                pass_fail.append('Fail')
+                info.append(f"Station Fail : {sta_cnt}")
+                pas_fail_disp.append("One or more stations got buffer greater than expected stalls")
             else:
                 tmp = list(buffer[bnds][spd].values())
                 tmp.sort()  # sort the values to check whether any of the value is above the expected stalls or not
@@ -316,35 +322,37 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
                 and get the count of failed stations
                 in case the mid value is above the expected_Stall then take the length of list's 2nd part consider this as no.of failed stations
                 also check in 1st part of list to find the failed stations'''
-                if tmp[int(len(tmp)/2)] < expt_stal:
+                if tmp[int(len(tmp)/2)] <= expt_stal:
                     ttmp = tmp[int(len(tmp)/2)+1 :]
                     while ttmp:
                         #pop all the vaues below expected_stall and take count of remaing values
                         t = ttmp.pop(ttmp.index(min(ttmp)))
-                        if t >= expt_stal:
+                        if t > expt_stal:
                             c += (len(ttmp)+1)
                             break
-                elif tmp[int(len(tmp)/2)] >= expt_stal:
+                elif tmp[int(len(tmp)/2)] > expt_stal:
                     c = len(tmp[int(len(tmp)/2):])
                     ttmp = tmp[:int(len(tmp) / 2)]
                     while ttmp:
                         # pop all the values above the expected_stalls and count each values break once u get values below expected_stall and then break loop
                         t = ttmp.pop(ttmp.index(max(ttmp)))
-                        if t >= expt_stal:
+                        if t > expt_stal:
                             c += 1
                         else:
                             break
 
                 pass_fail.append('Fail')
                 info.append(f'Station Fail : {c}')
+                pas_fail_disp.append("One or more stations got buffer greater than expected stalls")
 
-    mode_spd = [f"{i} - {j}" for j in data_rate for i in bands]
+    mode_spd = [f"{i} - {j}" for i in bands for j in data_rate]
     pasfail_tab = pd.DataFrame({
         #getting no.of stations form buffer
         'No.of stations': [sta_cnt]*len(mode_spd),#buffer[list(buffer.keys())[0]][list(buffer[list(buffer.keys())[0]].keys())[0]].values(),
         'Mode-speed': mode_spd,
         'Pass/Fail': pass_fail,
-        'Info':info})
+        'Info':info,
+        'Description': pas_fail_disp})
     print("Pass/fail",pasfail_tab)
 
     report = lf_report(_results_dir_name = "Video_Streaming",_alt_path = "")
@@ -358,13 +366,13 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
     report.build_table_title()
     report.test_setup_table(test_setup_data=test_setup_info, value = "Device Under Test")
     #report.build_custom()
-    report.set_obj_html(_obj_title="", _obj=f"This table breif about overall Pass/Fail criteria of stations where "
-                        f"the no.of video stalls of {sta_cnt} stations should below the expected stall {expt_stal}"
-                        f"then it is considered as Pass else if any one of the stations getting above the expected stall"
-                        f"{expt_stal} then it is considered to be Fail")
+    report.set_obj_html(_obj_title="", _obj=f"This table briefs about overall Pass/Fail criteria of stations where "
+                        f"the no.of video stalls of {sta_cnt} stations should be less than or equal to expected stall {expt_stal} "
+                        f"then it is considered to be as a Pass. If one or more stations got video stall greater than the expected stall "
+                        f"{expt_stal} then it is considered to be a Fail")
     report.set_table_title("Pass/Fail Criteria")
     report.build_table_title()
-    #report.build_objective()
+    report.build_objective()
     report.set_table_dataframe(pasfail_tab)
     report.build_table()
     if sta_cnt <= 40:
@@ -380,9 +388,11 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
         i = -1
         for speed in speeds:
             i += 1
-            report.set_obj_html(_obj_title="", _obj=f"The below graph shows number of connected clients on X-axis and "
-                                                    f"number of video stalls on Y-axis, when threshold is {threshold}% "
-                                                    f"for duration {duration} minutes")
+            report.set_obj_html(_obj_title="", _obj=f"The below graph explains, how many stalls the individual station "
+                                                    f"is experiencing when the traffic is running for {duration} "
+                                                    f"minutes with expected stalls and threshold is {expt_stal} and {threshold}% "
+                                                    f"per station respectively. The X-axis represents the number of stations,"
+                                                    f" Y-axis represents stall count")
             label = f"{data_rate[i]}"
             report.set_graph_title(f"{band}-Stations Emulation rate {label} per Station")
             report.build_graph_title()
@@ -394,9 +404,9 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
                      _color=['forestgreen', 'darkorange', 'blueviolet'], _color_edge='black', _figsize=(18, 6),
                      _grp_title="No.of stalls for each clients", _xaxis_step = step,_show_bar_value=True, _text_font=8, _text_rotation=45)
             grph_commn(graph_ob = graph,report_ob = report)
-            report.set_obj_html(_obj_title="", _obj=f"The below graph shows number of connected clients on X-axis and "
-                                                    f"avarage throughput on Y-axis, when threshold is {threshold}% "
-                                                    f"for {duration} minutes")
+            report.set_obj_html(_obj_title="", _obj=f"The below graph shows the number of connected stations on the X-axis and "
+                                                    f"the average throughput of each station on the Y-axis, with a traffic duration "
+                                                    f"of {duration} minutes when the threshold is {threshold}% ")
             report.set_graph_title(f"Throughput for {band}-Stations of speed {label} per Station")
             report.build_graph_title()
             report.build_objective()
@@ -423,7 +433,7 @@ def main():
                                      "sudo python3 video_stream.py --mgr localhost --mgr_port 8080 --upstream_port eth1 "
                                      "--num_stations 40 --security open --ssid testchannel --passwd [BLANK] "
                                      "--url 192.168.208.92/video.txt --emulation_rate 1 2 --bands_with_radio 5G-wiphy0 2.4G-wiphy1 5G/2.4G-wiphy0,wiphy1"
-                                     " --threshold 70 --file_size 30Mb --duration 2 --ap_name WAC505 --buffer_interval 5")
+                                     " --threshold 70 --file_size 30Mb --duration 2 --ap_name WAC505 --buffer_interval 5 --expected_stalls 5")
     optional = parser.add_argument_group('optional arguments')
     required = parser.add_argument_group('required arguments')
     optional.add_argument('--mgr', help='hostname for where LANforge GUI is running', default='localhost')
@@ -544,7 +554,7 @@ def main():
                                    col_names=['rx rate'],
                                    created_cx=layer4connections,
                                    iterations=0)
-            #rx_rate = random.sample(range(0,1000000),340) #sample data
+            #rx_rate = random.sample(range(0,1000000),int((float(args.duration) * 60) * num_stas)) #sample data
             while "" in rx_rate:
                 rx_rate.pop(rx_rate.index(""))
             # divide the list into number of endpoints, Yield successive n-sized chunks from l.
@@ -639,13 +649,14 @@ def main():
     print(band_dict,"\n avarage-with-bands",avg_rxrate_bands)
     test_end = datetime.datetime.now().strftime("%b %d %H:%M:%S")
     print("Test ended at ", test_end)
-    #http.postcleanup()
+    http.postcleanup()
     test_setup_info = {
         "AP Name": args.ap_name,
         "SSID": args.ssid,
         "No.of stations": args.num_stations,
         "Buffer interval": args.buffer_interval,
         "File size": args.file_size,
+        "Expected stalls" : args.expected_stalls,
         "Total Test Duration": datetime.datetime.strptime(test_end, '%b %d %H:%M:%S') - datetime.datetime.strptime(test_time, '%b %d %H:%M:%S')
     }
 
