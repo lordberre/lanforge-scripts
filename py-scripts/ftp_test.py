@@ -21,6 +21,7 @@ import datetime
 from datetime import datetime
 import time
 import os
+import matplotlib.patches as mpatches
 from lf_report import *
 from lf_graph import *
 
@@ -29,7 +30,7 @@ class FtpTest(LFCliBase):
     def __init__(self, lfclient_host="localhost", lfclient_port=8080, sta_prefix="sta", start_id=0, num_sta=None,
                  dut_ssid=None, dut_security=None, dut_passwd=None, file_size=None, band=None, twog_radio=None,
                  fiveg_radio=None, upstream="eth1", _debug_on=False, _exit_on_error=False, _exit_on_fail=False,
-                 direction=None, duration=None):
+                 direction=None, duration=None, traffic_duration=None):
         super().__init__(lfclient_host, lfclient_port, _debug=_debug_on, _exit_on_fail=_exit_on_fail)
         print("Test is about to start")
         self.host = lfclient_host
@@ -49,6 +50,7 @@ class FtpTest(LFCliBase):
         self.twog_radio = twog_radio
         self.fiveg_radio = fiveg_radio
         self.duration = duration
+        self.traffic_duration = traffic_duration
         self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
         self.station_profile = self.local_realm.new_station_profile()
         self.cx_profile = self.local_realm.new_http_profile()
@@ -71,7 +73,9 @@ class FtpTest(LFCliBase):
             self.num_sta = self.num_sta // 2
 
         # converting minutes into time stamp
+        self.pass_fail_duration = self.duration
         self.duration = self.convert_min_in_time(self.duration)
+        self.traffic_duration = self.convert_min_in_time(self.traffic_duration)
 
         # file size in Bytes
         self.file_size_bytes = int(self.convert_file_size_in_Bytes(self.file_size))
@@ -265,37 +269,49 @@ class FtpTest(LFCliBase):
         list_of_time = []
         list1 = []
         list2 = []
+        counter = 0
 
         for i in range(self.num_sta):
             list_of_time.append(0)
-        while list_of_time.count(0) != 0:
-
-            # run script upto given time
-            if str(datetime.datetime.now() - time1) >= self.duration:
+        #running layer 4 traffic upto user given time
+        while str(datetime.datetime.now() - time1) <= self.traffic_duration:
+            if list_of_time.count(0) == 0:
                 break
 
-            for i in range(self.num_sta):
-                data = self.json_get("layer4/list?fields=bytes-rd")
+            while list_of_time.count(0) != 0:
 
-                # reading uc-avg data in json format
-                uc_avg = self.json_get("layer4/list?fields=uc-avg")
-                if data['endpoint'][i][data2[i]]['bytes-rd'] <= self.file_size_bytes:
+                # run script upto given time
+                if counter is 0:
+                    if str(datetime.datetime.now() - time1) >= self.duration:
+                        counter = counter + 1
+                        break
+                else:
+                    if str(datetime.datetime.now() - time1) <= self.traffic_duration:
+                        break
+
+
+                for i in range(self.num_sta):
                     data = self.json_get("layer4/list?fields=bytes-rd")
-                if data['endpoint'][i][data2[i]]['bytes-rd'] >= self.file_size_bytes:
-                    list1.append(i)
-                    if list1.count(i) == 1:
-                        list2.append(i)
-                        list1 = list2
 
-                        # stop station after download or upload file with particular size
-                        self.json_post("/cli-json/set_cx_state", {
-                            "test_mgr": "default_tm",
-                            "cx_name": "CX_" + data2[i],
-                            "cx_state": "STOPPED"
-                        }, debug_=self.debug)
+                    # reading uc-avg data in json format
+                    uc_avg = self.json_get("layer4/list?fields=uc-avg")
+                    if data['endpoint'][i][data2[i]]['bytes-rd'] <= self.file_size_bytes:
+                        data = self.json_get("layer4/list?fields=bytes-rd")
+                    if data['endpoint'][i][data2[i]]['bytes-rd'] >= self.file_size_bytes:
+                        list1.append(i)
+                        if list1.count(i) == 1:
+                            list2.append(i)
+                            list1 = list2
 
-                        list_of_time[i] = round(int(uc_avg['endpoint'][i][data2[i]]['uc-avg']) / 1000, 1)
-            time.sleep(0.5)
+                            # stop station after download or upload file with particular size
+                            self.json_post("/cli-json/set_cx_state", {
+                                "test_mgr": "default_tm",
+                                "cx_name": "CX_" + data2[i],
+                                "cx_state": "STOPPED"
+                            }, debug_=self.debug)
+
+                            list_of_time[i] = round(int(uc_avg['endpoint'][i][data2[i]]['uc-avg']) / 1000, 1)
+                time.sleep(0.5)
 
         # method calling for throughput calculation
         self.throughput_calculation()
@@ -325,7 +341,7 @@ class FtpTest(LFCliBase):
         create_dict["direction"] = self.direction
         create_dict["file_size"] = self.file_size
         create_dict["time"] = list_time
-        create_dict["duration"] = self.time_test
+        create_dict["duration"] = self.pass_fail_duration
         create_dict["result"] = pass_fail
         create_dict["bands"] = bands
         create_dict["file_sizes"] = file_sizes
@@ -355,9 +371,6 @@ class FtpTest(LFCliBase):
         print("AP rebooted")
 
     def convert_min_in_time(self, total_minutes):
-        # saving time in minutus
-        self.time_test = total_minutes
-
         # Get hours with floor division
         hours = total_minutes // 60
 
@@ -370,7 +383,7 @@ class FtpTest(LFCliBase):
         return time_string
 
     def pass_fail_check(self, time_list):
-        if time_list.count(0) == 0:
+        if max(time_list) < self.pass_fail_duration:
             return "Pass"
         else:
             return "Fail"
@@ -462,37 +475,95 @@ class FtpTest(LFCliBase):
         graph_name = ""
         graph_description = ""
         count = 0
+        handles = []
         for data in result_data.values():
             if data["band"] == band and data["file_size"] == size and data["direction"] == "Download":
                 dataset.append(data["time"])
                 labels.append("Download")
-                color.append("Orange")
+
+                #Adding red bar if client unable to download/upload file
+                color_list = []
+                #converting minutes in seconds
+                duration = data["duration"] * 60
+                for i in data["time"]:
+                    if i < duration:
+                        color_list.append("orange")
+                    else:
+                        color_list.append("red")
+                if color_list.count("red") is 0:
+                    handles.append(mpatches.Patch(color='orange', label='Download <= threshold time'))
+                    num_col = 1
+                    box = (1, 1.15)
+                else:
+                    handles.append(mpatches.Patch(color='orange', label='Download <= threshold time'))
+                    handles.append(mpatches.Patch(color='red', label='Download > threshold time'))
+                    num_col = 2
+                    box = (1, 1.15)
+                color.append(color_list)
                 graph_name = "File size " + size + " " + str(
                     num_stations) + " Clients " + band + "-File Download Times(secs)"
+                fail_count = len([i for i in data["time"] if i > (data["duration"] * 60)])
                 graph_description = "Out of " + str(data["num_stations"]) + " clients, " + str(
-                    data["num_stations"] - data["time"].count(0)) + " are able to download " + "within " + str(
+                    data["num_stations"] - fail_count) + " are able to download " + "within " + str(
                     data["duration"]) + " min."
                 count = count + 1
             if data["band"] == band and data["file_size"] == size and data["direction"] == "Upload":
                 dataset.append(data["time"])
                 labels.append("Upload")
-                color.append("Blue")
+
+                # Adding red bar if client unable to download/upload file
+                color_list = []
+                duration = data["duration"] * 60
+                for i in data["time"]:
+                    if i < duration:
+                        color_list.append("blue")
+                    else:
+                        color_list.append("red")
+                if color_list.count("red") is 0:
+                    handles.append(mpatches.Patch(color='blue', label='Upload <= threshold time'))
+                    num_col = 1
+                    box = (1, 1.15)
+                else:
+                    handles.append(mpatches.Patch(color='blue', label='Upload <= threshold time'))
+                    handles.append(mpatches.Patch(color='red', label='Upload < threshold time'))
+                    num_col = 2
+                    box = (1, 1.15)
+                color.append(color_list)
+
                 graph_name = "File size " + size + " " + str(
                     num_stations) + " Clients " + band + "-File Upload Times(secs)"
+                fail_count = len([i for i in data["time"] if i > (data["duration"] * 60)])
                 graph_description = graph_description + "Out of " + str(data["num_stations"]) + " clients, " + str(
-                    data["num_stations"] - data["time"].count(0)) + " are able to upload " + "within " + str(
+                    data["num_stations"] - fail_count) + " are able to upload " + "within " + str(
                     data["duration"]) + " min."
                 count = count + 1
         if count == 2:
             graph_name = "File size " + size + " " + str(
                 num_stations) + " Clients " + band + "-File Download and Upload Times(secs)"
+            handles = []
+            for i in labels:
+                if i is Upload:
+                    c = "blue"
+                else:
+                    c = "orange"
+                handles.append(mpatches.Patch(color=c, label=i + " <= threshold time"))
+            num_col = 2
+            box = (1,1.15)
+            if (color[0].count("red") >=1) or (color[1].count("red") >=1):
+                num_col = 3
+                box = (1, 1.15)
+                if labels[0] is Download:
+                    handles.append(mpatches.Patch(color='red', label='Download/Upload > threshold time'))
+                else:
+                    handles.append(mpatches.Patch(color='red', label='Upload/Download > threshold time'))
+
 
         self.report.set_obj_html(graph_name, graph_description)
         self.report.build_objective()
         image_name = "image"+band+size
         x_axis_name = "Stations"
         y_axis_name = "Time in seconds"
-        self.bar_graph(x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name)
+        self.bar_graph(x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name, handles, ncol=num_col, box=box, fontsize=12)
 
     def generate_graph_throughput(self, result_data, x_axis, band, size):
         '''Method for generating graph for time'''
@@ -530,9 +601,10 @@ class FtpTest(LFCliBase):
         image_name = "image" + band + size + "throughput"
         x_axis_name = "Stations"
         y_axis_name = "Throughput in MB"
-        self.bar_graph(x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name)
+        box = (1.1,1.05)
+        self.bar_graph(x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name, handles=None, ncol=1, box=box, fontsize=None)
 
-    def bar_graph(self, x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name):
+    def bar_graph(self, x_axis, image_name, dataset, color, labels, x_axis_name, y_axis_name,handles, ncol, box, fontsize):
         '''This Method will plot bar graph'''
 
         graph = lf_bar_graph(_data_set=dataset,
@@ -545,7 +617,14 @@ class FtpTest(LFCliBase):
                              _color=color,
                              _show_bar_value=False,
                              _xaxis_step=None,
-                             _color_edge=None)
+                             _legend_handles=handles,
+                             _color_edge=None,
+                             _text_rotation=40,
+                             _legend_loc="upper right",
+                             _legend_box=box,
+                             _legend_ncol=ncol,
+                             _legend_fontsize=fontsize,
+                             _enable_csv=True)
 
         graph_png = graph.build_bar_graph()
 
@@ -554,6 +633,8 @@ class FtpTest(LFCliBase):
         self.report.set_graph_image(graph_png)
         # need to move the graph image to the results
         self.report.move_graph_image()
+        self.report.set_csv_filename(graph_png)
+        self.report.move_csv_file()
 
         self.report.build_graph()
 
@@ -572,7 +653,7 @@ class FtpTest(LFCliBase):
     def generate_report(self, ftp_data, date,test_setup_info, input_setup_info):
         '''Method for generate the report'''
 
-        self.report = lf_report(_results_dir_name="ftp_test")
+        self.report = lf_report(_results_dir_name="ftp_test", _output_html="ftp_test.html", _output_pdf="ftp_test.pdf")
         self.report.set_title("FTP Test")
         self.report.set_date(date)
         self.report.build_banner()
@@ -581,7 +662,7 @@ class FtpTest(LFCliBase):
         self.report.test_setup_table(value="Device under test", test_setup_data=test_setup_info)
 
         self.report.set_obj_html("Objective",
-                            "This FTP Test is used to Verify that N clients connected on Specified band and can simultaneously download some amount of file from FTP server and measuring the time taken by client to Download/Upload the file.")
+                            "This FTP Test is used to Verify that N clients connected on Specified band and can simultaneously download/upload some amount of file from FTP server and measuring the time taken by client to Download/Upload the file.")
         self.report.build_objective()
         self.report.set_obj_html("PASS/FAIL Results",
                             "This Table will give Pass/Fail results.")
@@ -599,6 +680,7 @@ class FtpTest(LFCliBase):
         self.report.set_table_title("Test input Information")
         self.report.build_table_title()
         self.report.test_setup_table(value="Information", test_setup_data=input_setup_info)
+        self.report.build_footer()
         html_file = self.report.write_html()
         print("returned file {}".format(html_file))
         print(html_file)
@@ -622,9 +704,10 @@ def main():
     parser.add_argument('--ap_ip', type=str, help='--ap_ip')
     parser.add_argument('--twog_radio', type=str, help='specify radio for 2.4G clients', default='wiphy1')
     parser.add_argument('--fiveg_radio', type=str, help='specify radio for 5G client', default='wiphy0')
-    parser.add_argument('--twog_duration', nargs="+", help='Pass or Fail duration for 2.4G band')
-    parser.add_argument('--fiveg_duration', nargs="+", help='Pass or Fail duration for 5G band')
-    parser.add_argument('--Both_duration', nargs="+", help='Pass or Fail duration for Both band')
+    parser.add_argument('--twog_duration', nargs="+", help='Pass and Fail duration for 2.4G band in minutes')
+    parser.add_argument('--fiveg_duration', nargs="+", help='Pass and Fail duration for 5G band in minutes')
+    parser.add_argument('--Both_duration', nargs="+", help='Pass and Fail duration for Both band in minutes')
+    parser.add_argument('--traffic_duration', type=int, help='duration for layer 4 traffic running')
 
     # Test variables
     parser.add_argument('--bands', nargs="+", help='--bands defaults ["5G","2.4G","Both"]',
@@ -671,8 +754,12 @@ def main():
                 if size is file_size:
                     index = list(args.file_sizes).index(size)
                     duration = args.Both_duration[index]
+        if duration.isdigit():
+            duration = int(duration)
+        else:
+            duration = float(duration)
 
-        return int(duration)
+        return duration
 
     # For all combinations ftp_data of directions, file size and client counts, run the test
     for band in args.bands:
@@ -691,7 +778,8 @@ def main():
                               direction=direction,
                               twog_radio=args.twog_radio,
                               fiveg_radio=args.fiveg_radio,
-                              duration=pass_fail_duration(band, file_size)
+                              duration=pass_fail_duration(band, file_size),
+                              traffic_duration=args.traffic_duration
                               )
 
                 iteraration_num = iteraration_num + 1
