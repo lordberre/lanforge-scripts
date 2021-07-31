@@ -1,5 +1,5 @@
 """ ftp_test.py will verify that N clients connected on specified band and can simultaneously download/upload some amount of file from FTP server and measuring the time taken by client to download/upload the file.
-    cli- python3 ftp_test.py --mgr localhost --mgr_port 8080 --upstream_port eth1 --ssid Netgear --security open --passwd BLANK --ap_name WAC505 --ap_ip 192.168.213.90 --bands Both --directions Download --twog_radio wiphy1 --fiveg_radio wiphy0 --file_size 2MB --num_stations 40 --Both_duration 1
+    cli- python3 ftp_test.py --mgr localhost --mgr_port 8080 --upstream_port eth1 --ssid FTP --security open --passwd BLANK --ap_name WAC505 --ap_ip 192.168.213.90 --bands Both --directions Download --twog_radio wiphy1 --fiveg_radio wiphy0 --file_size 2MB --num_stations 40 --Both_duration 1 --traffic_duration 2 --ssh_port 22_
     Copyright 2021 Candela Technologies Inc
     License: Free to distribute and modify. LANforge systems must be licensed.
 """
@@ -30,7 +30,7 @@ class FtpTest(LFCliBase):
     def __init__(self, lfclient_host="localhost", lfclient_port=8080, sta_prefix="sta", start_id=0, num_sta=None,
                  dut_ssid=None, dut_security=None, dut_passwd=None, file_size=None, band=None, twog_radio=None,
                  fiveg_radio=None, upstream="eth1", _debug_on=False, _exit_on_error=False, _exit_on_fail=False,
-                 direction=None, duration=None, traffic_duration=None):
+                 direction=None, duration=None, traffic_duration=None, ssh_port=None):
         super().__init__(lfclient_host, lfclient_port, _debug=_debug_on, _exit_on_fail=_exit_on_fail)
         print("Test is about to start")
         self.host = lfclient_host
@@ -51,6 +51,7 @@ class FtpTest(LFCliBase):
         self.fiveg_radio = fiveg_radio
         self.duration = duration
         self.traffic_duration = traffic_duration
+        self.ssh_port = ssh_port
         self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
         self.station_profile = self.local_realm.new_station_profile()
         self.cx_profile = self.local_realm.new_http_profile()
@@ -241,10 +242,34 @@ class FtpTest(LFCliBase):
     def file_create(self):
         '''This method will Create file for given file size'''
 
-        if os.path.isfile("/home/lanforge/ftp_test.txt"):
-            os.remove("/home/lanforge/ftp_test.txt")
-        os.system("fallocate -l " + self.file_size + " /home/lanforge/ftp_test.txt")
-        print("File creation done %s" % self.file_size)
+        ip = self.host
+        user = "root"
+        pswd = "lanforge"
+        port = self.ssh_port
+        ssh = paramiko.SSHClient()  # creating shh client object we use this object to connect to router
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # automatically adds the missing host key
+        ssh.connect(ip, port=port, username=user, password=pswd, banner_timeout=600)
+        cmd = '[ -f /home/lanforge/ftp_test.txt ] && echo "True" || echo "False"'
+        stdin, stdout, stderr = ssh.exec_command(str(cmd))
+        output = stdout.readlines()
+        print(output)
+        if output == ["True\n"]:
+            cmd1 = "rm /home/lanforge/ftp_test.txt"
+            stdin, stdout, stderr = ssh.exec_command(str(cmd1))
+            output = stdout.readlines()
+            time.sleep(10)
+            cmd2 = "sudo fallocate -l " + self.file_size + " /home/lanforge/ftp_test.txt"
+            stdin, stdout, stderr = ssh.exec_command(str(cmd2))
+            print("File creation done %s" % self.file_size)
+            output = stdout.readlines()
+        else:
+            cmd2 = "sudo fallocate -l " + self.file_size + " /home/lanforge/ftp_test.txt"
+            stdin, stdout, stderr = ssh.exec_command(str(cmd2))
+            print("File creation done %s" % self.file_size)
+            output = stdout.readlines()
+        ssh.close()
+        time.sleep(1)
+        return output
 
     def convert_file_size_in_Bytes(self, size):
         '''convert file size MB or GB into Bytes'''
@@ -708,6 +733,7 @@ def main():
     parser.add_argument('--fiveg_duration', nargs="+", help='Pass and Fail duration for 5G band in minutes')
     parser.add_argument('--Both_duration', nargs="+", help='Pass and Fail duration for Both band in minutes')
     parser.add_argument('--traffic_duration', type=int, help='duration for layer 4 traffic running')
+    parser.add_argument('--ssh_port', type=int, help="specify the shh port eg 22", default=22)
 
     # Test variables
     parser.add_argument('--bands', nargs="+", help='--bands defaults ["5G","2.4G","Both"]',
@@ -779,7 +805,8 @@ def main():
                               twog_radio=args.twog_radio,
                               fiveg_radio=args.fiveg_radio,
                               duration=pass_fail_duration(band, file_size),
-                              traffic_duration=args.traffic_duration
+                              traffic_duration=args.traffic_duration,
+                              ssh_port=args.ssh_port
                               )
 
                 iteraration_num = iteraration_num + 1
