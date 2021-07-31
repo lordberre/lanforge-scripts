@@ -16,8 +16,6 @@ import paramiko
 if 'py-json' not in sys.path:
     sys.path.append('../py-json')
 from LANforge import LFUtils
-from LANforge import lfcli_base
-from LANforge.lfcli_base import LFCliBase
 from LANforge.LFUtils import *
 import realm
 from realm import Realm
@@ -68,13 +66,6 @@ class HttpDownload(Realm):
 
     def precleanup(self):
         self.count = 0
-        # try:
-        #     self.local_realm.load("BLANK")
-        # except:
-        #     print("couldn't load 'BLANK' Test Configuration")
-
-        #print("hi", self.radio)
-
         for rad in self.radio:
             print("radio", rad)
             if rad == self.fiveg_radio:
@@ -117,8 +108,6 @@ class HttpDownload(Realm):
         # enable http on ethernet
         self.port_util.set_http(port_name=self.local_realm.name_to_eid(self.upstream)[2], resource=1, on=True)
         for rad in self.radio:
-
-            # station build
             self.station_profile.use_security(self.security, self.ssid, self.password)
             self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
             self.station_profile.set_command_param("set_port", "report_timer", 1500)
@@ -166,7 +155,6 @@ class HttpDownload(Realm):
     def my_monitor(self):
         # data in json format
         data = self.local_realm.json_get("layer4/list?fields=uc-avg")
-        print(data)
         data1 = []
         for i in range(len(data['endpoint'])):
             data1.append(str(list(data['endpoint'][i]))[2:-2])
@@ -204,7 +192,6 @@ class HttpDownload(Realm):
         return data2
 
     def postcleanup(self):
-        # for rad in self.radio
         self.http_profile.cleanup()
         self.station_profile.cleanup()
         LFUtils.wait_until_ports_disappear(base_url=self.local_realm.lfclient_url, port_list=self.station_profile.station_names,
@@ -215,16 +202,11 @@ class HttpDownload(Realm):
         user = "root"
         pswd = "lanforge"
         port = ssh_port
-
         ssh = paramiko.SSHClient()  # creating shh client object we use this object to connect to router
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # automatically adds the missing host key
         ssh.connect(ip, port=port, username=user, password=pswd, banner_timeout=600)
-
-
-        # cmd = "sudo fallocate -l " + self.file_size + " /usr/local/lanforge/nginx/html/webpage.html"
         cmd = '[ -f /usr/local/lanforge/nginx/html/webpage.html ] && echo "True" || echo "False"'
         stdin, stdout, stderr = ssh.exec_command(str(cmd))
-
         output = stdout.readlines()
         print(output)
         if output == ["True\n"]:
@@ -247,7 +229,6 @@ class HttpDownload(Realm):
 
     def download_time_in_sec(self,result_data):
         self.resullt_data = result_data
-        print("hi",result_data)
         download_time = dict.fromkeys(result_data.keys())
         for i in download_time:
             try:
@@ -359,119 +340,119 @@ class HttpDownload(Realm):
         if bands == ["5G", "2.4G", "Both"]:
             print("yes")
             # 5G
-            if float(z11[0]) < float(threshold_5g):
-                print("PASS")
-                pass_fail_list.append("PASS")
-                sumry5.append("PASS")
-            elif float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
+            if float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
                 print("FAIL")
                 pass_fail_list.append("FAIL")
                 sumry5.append("FAIL")
+            elif float(z11[0]) < float(threshold_5g):
+                print("PASS")
+                pass_fail_list.append("PASS")
+                sumry5.append("PASS")
             # 2.4g
-            if float(z11[1]) < float(threshold_2g):
-                var = "PASS"
+            if float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_2g):
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumry2.append("PASS")
-            elif float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_2g):
-                pass_fail_list.append("FAIL")
                 sumry2.append("FAIL")
+            elif float(z11[1]) < float(threshold_2g):
+                pass_fail_list.append("PASS")
+                sumry2.append("PASS")
             # BOTH
-            if float(z11[2]) < float(threshold_both):
-                var = "PASS"
+            if float(z11[2]) == 0.0 or float(z11[2]) > float(threshold_both) :
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumryB.append("PASS")
-            elif float(z11[2]) == 0.0 or float(z11[2]) > float(threshold_both):
-                pass_fail_list.append("FAIL")
                 sumryB.append("FAIL")
+            elif float(z11[2]) < float(threshold_both):
+                pass_fail_list.append("PASS")
+                sumryB.append("PASS")
 
             data.append(','.join(sumry5))
             data.append(','.join(sumry2))
             data.append(','.join(sumryB))
 
         elif bands == ['5G']:
-            if float(z11[0]) < float(threshold_5g):
-                print("PASS")
-                pass_fail_list.append("PASS")
-                sumry5.append("PASS")
-            elif float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
+            if float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
                 print("FAIL")
                 pass_fail_list.append("FAIL")
                 sumry5.append("FAIL")
+            elif float(z11[0]) < float(threshold_5g):
+                print("PASS")
+                pass_fail_list.append("PASS")
+                sumry5.append("PASS")
             data.append(','.join(sumry5))
 
         elif bands == ['2.4G']:
-            if float(z11[0]) == 0.0 or float(z11[0]) < float(threshold_2g):
-                var = "PASS"
+            if float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_2g):
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumry2.append("PASS")
-            elif float(z11[0]) > float(threshold_2g):
-                pass_fail_list.append("FAIL")
                 sumry2.append("FAIL")
+            elif float(z11[0]) < float(threshold_2g):
+                pass_fail_list.append("PASS")
+                sumry2.append("PASS")
             data.append(','.join(sumry2))
         elif bands == ["Both"]:
-            if float(z11[0]) < float(threshold_both):
-                var = "PASS"
+            if float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_both):
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumryB.append("PASS")
-            elif float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_both):
-                pass_fail_list.append("FAIL")
                 sumryB.append("FAIL")
+            elif float(z11[0]) < float(threshold_both):
+                pass_fail_list.append("PASS")
+                sumryB.append("PASS")
             data.append(','.join(sumryB))
         elif bands == ['5G', '2.4G']:
-            if float(z11[0]) < float(threshold_5g):
-                print("PASS")
-                pass_fail_list.append("PASS")
-                sumry5.append("PASS")
-            elif float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
+            if float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
                 print("FAIL")
                 pass_fail_list.append("FAIL")
                 sumry5.append("FAIL")
+            elif float(z11[0]) < float(threshold_5g):
+                print("PASS")
+                pass_fail_list.append("PASS")
+                sumry5.append("PASS")
             # 2.4g
-            if float(z11[1]) < float(threshold_2g):
-                var = "PASS"
+            if float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_2g):
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumry2.append("PASS")
-            elif float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_2g):
-                pass_fail_list.append("FAIL")
                 sumry2.append("FAIL")
+            elif float(z11[1]) < float(threshold_2g):
+                pass_fail_list.append("PASS")
+                sumry2.append("PASS")
             data.append(','.join(sumry5))
             data.append(','.join(sumry2))
 
         elif bands == ['5G', 'Both']:
-            if float(z11[0]) < float(threshold_5g):
-                print("PASS")
-                pass_fail_list.append("PASS")
-                sumry5.append("PASS")
-            elif float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
+            if float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_5g):
                 print("FAIL")
                 pass_fail_list.append("FAIL")
                 sumry5.append("FAIL")
-            if float(z11[1]) < float(threshold_both):
-                var = "PASS"
+            elif float(z11[0]) < float(threshold_5g):
+                print("PASS")
+                pass_fail_list.append("PASS")
+                sumry5.append("PASS")
+            if float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_both):
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumryB.append("PASS")
-            elif float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_both):
-                pass_fail_list.append("FAIL")
                 sumryB.append("FAIL")
+            elif float(z11[1]) < float(threshold_both):
+                pass_fail_list.append("PASS")
+                sumryB.append("PASS")
 
             data.append(','.join(sumry5))
             data.append(','.join(sumryB))
 
         elif bands == ['2.4G', 'Both']:
-            if float(z11[0]) < float(threshold_2g):
-                var = "PASS"
+            if float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_2g):
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumry2.append("PASS")
-            elif float(z11[0]) == 0.0 or float(z11[0]) > float(threshold_2g):
-                pass_fail_list.append("FAIL")
                 sumry2.append("FAIL")
-            if float(z11[1]) < float(threshold_both):
-                var = "PASS"
+            elif float(z11[0]) < float(threshold_2g):
+                pass_fail_list.append("PASS")
+                sumry2.append("PASS")
+            if float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_both):
+                var = "FAIL"
                 pass_fail_list.append(var)
-                sumryB.append("PASS")
-            elif float(z11[1]) == 0.0 or float(z11[1]) > float(threshold_both):
-                pass_fail_list.append("FAIL")
                 sumryB.append("FAIL")
+            elif float(z11[1]) < float(threshold_both):
+                pass_fail_list.append("PASS")
+                sumryB.append("PASS")
             data.append(','.join(sumry2))
             data.append(','.join(sumryB))
         return data
@@ -495,12 +476,12 @@ class HttpDownload(Realm):
         return graph_png
 
     def graph_2(self,dataset2, lis, bands):
-        graph_2 = lf_bar_graph(_data_set=dataset2, _xaxis_name="Stations", _yaxis_name="Speed in Mbps",
+        graph_2 = lf_bar_graph(_data_set=dataset2, _xaxis_name="Stations", _yaxis_name="Download Rate in Mbps",
                                _xaxis_categories=lis, _label=bands, _xticks_font=8,
                                _graph_image_name="webpage_speed_graph",
                                _color=['forestgreen', 'darkorange', 'blueviolet'], _color_edge='black',
                                _figsize=(14, 5),
-                               _grp_title="Speed of each client (Mbps)", _xaxis_step=1, _show_bar_value=True,
+                               _grp_title="Download rate for each client (Mbps)", _xaxis_step=1, _show_bar_value=True,
                                _text_font=6, _text_rotation=60,
                                _legend_loc="upper right",
                                _legend_box=(1, 1.15),
@@ -708,9 +689,7 @@ def main():
         value2 = http.monitor_bytes()
         value3 = http.monitor_rx()
         http.postcleanup()
-        # print(value)
-        # print(value2)
-        # print(value3)
+
         if bands == "5G":
             print("yes")
             list5G.extend(value)
@@ -759,7 +738,7 @@ def main():
             final_dict['Both']['avg'] = avg_both
             final_dict['Both']['bytes_rd'] = Both_bytes
             final_dict['Both']['speed'] = Both_speed
-    #print("final list", final_dict)
+
     result_data = final_dict
     print("result", result_data)
     print("Test Finished")
@@ -770,7 +749,7 @@ def main():
     s2 = test_end  # for example
     FMT = '%b %d %H:%M:%S'
     test_duration = datetime.datetime.strptime(s2, FMT) - datetime.datetime.strptime(s1, FMT)
-    #test_duration = "2:04:34"
+
     print("total test duration ", test_duration)
     date = str(datetime.datetime.now()).split(",")[0].replace(" ", "-").split(".")[0]
     test_setup_info = {
@@ -804,7 +783,7 @@ def main():
 
     dataset2= http1.speed_in_Mbps(result_data=result_data)
     data = http1.summary_calculation(result_data=result_data, bands=args.bands, threshold_5g=args.threshold_5g , threshold_2g= args.threshold_2g, threshold_both=args.threshold_both)
-    #print( data)
+
     summary_table_value = {
         "": args.bands,
         "PASS/FAIL": data
