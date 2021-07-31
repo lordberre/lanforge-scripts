@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+                        <html lang='en'>
+                        <head>
+                            <meta charset='UTF-8'>
+                            <meta name='viewport' content='width=device-width, initial-scale=1' />
+                            <style>
+                            body { margin: 0; padding: 0; }
+                            </style>
+                            <link rel='stylesheet' href='report.css' />
+                            <link rel='stylesheet' href='custom.css' />
+                            <title>WEBPAGE DOWNLOAD TEST</title>
+                        </head>
+                        <body>
+                        <div id='BannerBack'>
+                            <div id='Banner'>
+                                <br/>
+                                <img id='BannerLogo' align='right' src="CandelaLogo2-90dpi-200x90-trans.png" border='0'/>
+                                <div class='HeaderStyle'>
+                                    <br>
+                                    <h1 class='TitleFontPrint' style='color:darkgreen;'> WEBPAGE DOWNLOAD TEST </h1>
+                                    <h3 class='TitleFontPrint' style='color:darkgreen;'>2021-07-31-15:47:04</h3>
+                                    </div>
+                            </div>
+                        </div>
+                 
+                    <!-- Table Title-->
+                    <h3 align='left'>Test Setup Information</h3> 
+                    
+                            <!-- Test Setup Information -->
+                            <table width='700px' border='1' cellpadding='2' cellspacing='0' style='border-top-color: gray; border-top-style: solid; border-top-width: 1px; border-right-color: gray; border-right-style: solid; border-right-width: 1px; border-bottom-color: gray; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: gray; border-left-style: solid; border-left-width: 1px'>
+
+                                <tr>
+                                  <td>Device under test</td>
+                                  <td>
+                                    <table width='100%' border='0' cellpadding='2' cellspacing='0' style='border-top-color: gray; border-top-style: solid; border-top-width: 1px; border-right-color: gray; border-right-style: solid; border-right-width: 1px; border-bottom-color: gray; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: gray; border-left-style: solid; border-left-width: 1px'>
+                                      <tr><td>DUT Name</td><td colspan='3'>TestAP</td></tr><tr><td>SSID</td><td colspan='3'>testap210</td></tr><tr><td>Test Duration</td><td colspan='3'>0:02:44</td></tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                            </table>
+
+                            <br>
+                            
+            <!-- Test Objective -->
+            <h3 align='left'>Objective</h3> 
+            <p align='left' width='900'>The Webpage Download Test is designed to test the performance of the Access Point.The goal is to check whether the webpage loading time of all the 10 clients which are downloading at the same time meets the expectation when clients connected on single radio as well as dual radio</p>
+            
+            <!-- Test Objective -->
+            <h3 align='left'>Download Time Graph</h3> 
+            <p align='left' width='900'>The below graph provides information about the  download time taken by each client to download webpage for test duration of  1 min</p>
+            
+              <img align='center' style='padding:15px;margin:5px 5px 2em 5px;width:1000px;' src='webpage download time graph.png' border='1' />
+            
+            <!-- Test Objective -->
+            <h3 align='left'>Download Rate Graph</h3> 
+            <p align='left' width='900'>The below graph provides information about the download rate in Mbps of each client to download the webpage for test duration of  1 min</p>
+            
+              <img align='center' style='padding:15px;margin:5px 5px 2em 5px;width:1000px;' src='webpage_speed_graph.png' border='1' />
+            
+            <!-- Test Objective -->
+            <h3 align='left'>Summary Table Description</h3> 
+            <p align='left' width='900'>This Table shows you the summary result of Webpage Download Test as PASS or FAIL criteria. If the average time taken by 10 clients to access the webpage is less than 90s it's a PASS criteria for 2.4 ghz clients, If the average time taken by 10 clients to access the webpage is less than 60s it's a PASS criteria for 5 ghz clients and If the average time taken by 10 clients to access the webpage is less than 50s it's a PASS criteria for 2.4 ghz and 5ghz clients</p>
+            <table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: center;">
+      <th></th>
+      <th>PASS/FAIL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>5G</td>
+      <td>PASS</td>
+    </tr>
+  </tbody>
+</table>
+            <!-- Test Objective -->
+            <h3 align='left'>Download Time Table Description</h3> 
+            <p align='left' width='900'>This Table will provide you information of the minimum, maximum and the average time taken by clients to download a webpage in seconds</p>
+            <table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: center;">
+      <th></th>
+      <th>Minimum</th>
+      <th>Maximum</th>
+      <th>Average</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>5G</td>
+      <td>0.0</td>
+      <td>6.6</td>
+      <td>3.8</td>
+    </tr>
+  </tbody>
+</table>
+                    <!-- Table Title-->
+                    <h3 align='left'>Test input Information</h3> 
+                    
+                            <!-- Test Setup Information -->
+                            <table width='700px' border='1' cellpadding='2' cellspacing='0' style='border-top-color: gray; border-top-style: solid; border-top-width: 1px; border-right-color: gray; border-right-style: solid; border-right-width: 1px; border-bottom-color: gray; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: gray; border-left-style: solid; border-left-width: 1px'>
+
+                                <tr>
+                                  <td>Information</td>
+                                  <td>
+                                    <table width='100%' border='0' cellpadding='2' cellspacing='0' style='border-top-color: gray; border-top-style: solid; border-top-width: 1px; border-right-color: gray; border-right-style: solid; border-right-width: 1px; border-bottom-color: gray; border-bottom-style: solid; border-bottom-width: 1px; border-left-color: gray; border-left-style: solid; border-left-width: 1px'>
+                                      <tr><td>LANforge ip</td><td colspan='3'>192.168.200.29</td></tr><tr><td>File Size</td><td colspan='3'>10MB</td></tr><tr><td>Bands</td><td colspan='3'>['5G']</td></tr><tr><td>Upstream</td><td colspan='3'>eth1</td></tr><tr><td>Stations</td><td colspan='3'>10</td></tr><tr><td>SSID</td><td colspan='3'>testap210</td></tr><tr><td>Security</td><td colspan='3'>open</td></tr><tr><td>Duration</td><td colspan='3'>1</td></tr><tr><td>Contact</td><td colspan='3'>support@candelatech.com</td></tr>
+                                    </table>
+                                  </td>
+                                </tr>
+                            </table>
+
+                            <br>
+                            <!DOCTYPE html>
+                            <html lang='en'>
+                            <footer>
+                                <meta charset='UTF-8'>
+                                <meta name='viewport' content='width=device-width, initial-scale=1' />
+                                <style>
+                                body {{ margin: 0; padding: 0; }}
+                                </style>
+                                <link rel='stylesheet' href='report.css' />
+                                <link rel='stylesheet' href='custom.css' />
+                            </footer>
+                        <body>
+                            <div class='FooterStyle'>
+                                <a href="https://www.candelatech.com/">
+                                <img id='BannerLogoFooter' align='right' src="candela_swirl_small-72h.png" border='0'/>
+                                <p>Generate by Candela Technologies LANforge network testing tool</p>
+                                <p><a href="https://www.candelatech.com">www.candelatech.com</a><p>
+                            </div>
+                        </body>
+
+                        
