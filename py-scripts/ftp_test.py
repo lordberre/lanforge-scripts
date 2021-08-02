@@ -311,7 +311,7 @@ class FtpTest(LFCliBase):
                         counter = counter + 1
                         break
                 else:
-                    if str(datetime.datetime.now() - time1) <= self.traffic_duration:
+                    if str(datetime.datetime.now() - time1) >= self.traffic_duration:
                         break
 
 
