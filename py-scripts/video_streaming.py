@@ -426,7 +426,7 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
             report.build_objective()
             graph = lf_bar_graph(_data_set=[list(buffer[band][speed].values())], _xaxis_name="Stations",
                      _yaxis_name="No.of video stalls",
-                     _xaxis_categories=range(1,sta_cnt+1,step), _label=["buffer"], _xticks_font=8,
+                     _xaxis_categories=range(1,len(buffer[band][speed])+1,step), _label=["buffer"], _xticks_font=8,
                      _graph_image_name=f"{band.replace('/','-')}-Stations-Emulation-rate-{label.replace(' ','-')}-per-Station",
                      _color=['forestgreen', 'darkorange', 'blueviolet'], _color_edge='black', _figsize=(18, 6),
                      _grp_title="No.of stalls for each clients", _xaxis_step = step,_show_bar_value=True, _text_font=8, _text_rotation=45,
@@ -437,7 +437,7 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
                                  f"of each station on the Y-axis, with a traffic duration of {duration} minutes when the threshold is {threshold}%")
             report.build_objective()
             graph = lf_bar_graph(_data_set=[avg_rxrate[band][speed]], _xaxis_name="Stations",
-                     _yaxis_name="Throughput(Mbps)",_xaxis_categories=range(1, sta_cnt+1,step),
+                     _yaxis_name="Throughput(Mbps)",_xaxis_categories=range(1, len(buffer[band][speed])+1,step),
                      _label=["rx-rate"],_xticks_font=8,_figsize=(18, 6),
                      _graph_image_name=f"Rx-rate-{band.replace('/','-')}-Stations-Max-speed-{label.replace(' ','-')}-per-Station",
                      _color=['blueviolet', 'darkorange', 'forestgreen'], _color_edge='black',
@@ -458,7 +458,7 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
 def main():
     parser = argparse.ArgumentParser(description="Netgear Video streaming Test Script \n"
                                      "sudo python3 video_stream.py --mgr localhost --mgr_port 8080 --upstream_port eth1 "
-                                     "--num_stations 40 --security open --ssid testchannel --passwd [BLANK] "
+                                     "--num_stations 40 --security open --ssid testchannel --passwd [BLANK] --lanforge_passwd lanforge"
                                      "--url 192.168.208.92/video.txt --emulation_rate 1 2 --bands_with_radio 5G-wiphy0 2.4G-wiphy1 5G/2.4G-wiphy0,wiphy1"
                                      " --threshold 70 --file_size 30Mb --duration 2 --ap_name WAC505 --buffer_interval 5 --expected_stalls 5")
     optional = parser.add_argument_group('optional arguments')
@@ -471,7 +471,7 @@ def main():
     required.add_argument('--security', help='WiFi Security protocol: {open|wep|wpa2|wpa3')
     required.add_argument('--ssid', help='WiFi SSID for script object to associate to')
     required.add_argument('--passwd', help='WiFi passphrase/password/key')
-    required.add_argument('-pwd','--lanforge_passwd', help='password of lanforge for file creation eg: "lanforge')
+    required.add_argument('-pwd','--lanforge_passwd', help='password of lanforge for file creation eg: lanforge')
     required.add_argument('--url', type=str, help='url on eth1 to test HTTP')
     optional.add_argument('--target_per_ten', help='number of request per 10 minutes', default=100)
     optional.add_argument('-emu','--emulation_rate', nargs="+", help='(Example : --emulation_rate 6.5 4k "HD 720p")  \n-------Video Emulation Rate-------\n'
@@ -552,7 +552,7 @@ def main():
                                    col_names=['rx rate'],
                                    created_cx=layer4connections,
                                    iterations=0)
-            rx_rate = random.sample(range(0,1000000),int((float(args.duration) * 60) * num_stas)) #sample data
+            #rx_rate = random.sample(range(0,1000000),int((float(args.duration) * 60) * num_stas)) #sample data
             while "" in rx_rate:
                 rx_rate.pop(rx_rate.index(""))
             # divide the list into number of endpoints, Yield successive n-sized chunks from l.
