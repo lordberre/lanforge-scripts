@@ -62,6 +62,7 @@ class VideoStreaming(Realm):
     def create_sta_list(self):
         # create different list of stations depending upon bands
         self.count = 0
+
         for rad in self.radio:
             if self.bands == "5G":
                 # select an mode
@@ -86,6 +87,7 @@ class VideoStreaming(Realm):
                     '''LFUtils.wait_until_ports_disappear(base_url=self.local_realm.lfclient_url,
                                                        port_list=self.station_list1,
                                                        debug=self.local_realm.debug)'''
+
                     return
                 else:
                     self.station_profile.mode = 9
@@ -126,7 +128,6 @@ class VideoStreaming(Realm):
                                          sleep_time=.5,
                                          suppress_related_commands_=None, http=True,
                                          http_ip=self.url)
-
             if self.count == 2:
                 self.station_profile.mode = 11
                 self.station_list = self.station_list1
@@ -152,7 +153,6 @@ class VideoStreaming(Realm):
         print("Test Started")
 
     def monitor(self, duration_sec, monitor_interval, created_cx, col_names, iterations):
-
         try:
             duration_sec = Realm.parse_time(duration_sec).seconds
         except:
@@ -296,7 +296,6 @@ def emu_rate_from_usr(emulation_rate,max_speed):
                 print(
                     f"###{e}###\n provide correct video emulation rate with help command \n user's value: {emulation_rate}")
                 exit(1)
-
 
 def grph_commn(graph_ob,report_ob):
     graph_png = graph_ob.build_bar_graph()
@@ -443,6 +442,7 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
                      _color=['blueviolet', 'darkorange', 'forestgreen'], _color_edge='black',
                      _grp_title="Throughput for each clients", _xaxis_step=step, _show_bar_value=True,_text_font=8,_text_rotation=45,
                      _legend_handles=None, _legend_loc="best", _legend_box=(1.0,0.5), _legend_ncol=2, _legend_fontsize=10)
+
             grph_commn(graph_ob = graph,report_ob = report)
 
     report.set_table_title("Input Setup Information")
@@ -591,6 +591,7 @@ def main():
                 for index, key in enumerate(endp_dict):
                         endp_dict[key].append(i[index])
 
+
             print("endp_dict----",endp_dict)
 
             final_data = dict.fromkeys(endp_dict.keys())
@@ -638,6 +639,7 @@ def main():
                         print(e)
                         break
                 final_data[k] = flag'''
+
             print("number of buffers in all endpoints",final_data)
             speed_dict[speed] = final_data
             avg_rxrate_speed[speed] = sta_avg
