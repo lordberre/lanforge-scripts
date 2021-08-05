@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 from lf_report import lf_report
 from lf_graph import lf_bar_graph
+from lf_csv import lf_csv
 import random
 class VideoStreaming(Realm):
     def __init__(self, lfclient_host, lfclient_port, upstream, num_sta, security, ssid, password, url,
@@ -58,11 +59,9 @@ class VideoStreaming(Realm):
         self.http_profile.debug = _debug_on
         self.created_cx = {}
 
-
     def create_sta_list(self):
         # create different list of stations depending upon bands
         self.count = 0
-
         for rad in self.radio:
             if self.bands == "5G":
                 # select an mode
@@ -76,33 +75,16 @@ class VideoStreaming(Realm):
                 if self.count == 2:
                     self.sta_start_id = self.num_sta
                     self.num_sta = 2 * (self.num_sta)
-                    #self.http_profile.cleanup()
-                    # create station list with sta_id 20
-
                     self.station_list1 = LFUtils.portNameSeries(prefix_="sta", start_id_=self.sta_start_id,
                                                                 end_id_=self.num_sta - 1, padding_number_=10000,
                                                                 radio=rad)
-                    # cleanup station list which started sta_id 20
-                    #self.station_profile.cleanup(self.station_list1, debug_=self.local_realm.debug)
-                    '''LFUtils.wait_until_ports_disappear(base_url=self.local_realm.lfclient_url,
-                                                       port_list=self.station_list1,
-                                                       debug=self.local_realm.debug)'''
-
                     return
                 else:
                     self.station_profile.mode = 9
-            # clean dlayer4 ftp traffic
-            #self.http_profile.cleanup()
             self.station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=self.sta_start_id,
                                                        end_id_=self.num_sta - 1, padding_number_=10000,
                                                        radio=rad)
-            # cleans stations
-            '''self.station_profile.cleanup(self.station_list, delay=1, debug_=self.local_realm.debug)
-            LFUtils.wait_until_ports_disappear(base_url=self.local_realm.lfclient_url,
-                                               port_list=self.station_list,
-                                               debug=self.local_realm.debug)'''
-            #time.sleep(1)
-        #print("precleanup done")
+        print("create station names- done")
 
     def build(self,clear_station = True, clear_traffic = True):
         self.port_util.set_http(port_name=self.local_realm.name_to_eid(self.upstream)[2], resource=1, on=True)
@@ -128,6 +110,7 @@ class VideoStreaming(Realm):
                                          sleep_time=.5,
                                          suppress_related_commands_=None, http=True,
                                          http_ip=self.url)
+
             if self.count == 2:
                 self.station_profile.mode = 11
                 self.station_list = self.station_list1
@@ -185,7 +168,6 @@ class VideoStreaming(Realm):
                 else:
                     fields = ",".join(col_names)
                     created_cx_ = ",".join(created_cx)
-
                     response = self.json_get("/layer4/%s?fields=%s" % (created_cx_, fields))
                     endpt = response['endpoint']
                     if len(self.station_list) > 1:
@@ -194,7 +176,8 @@ class VideoStreaming(Realm):
                             rx_rate.append(i[name]['rx rate'])
                     else:
                         rx_rate.append(endpt['rx rate'])
-
+                self.json_post("/cli-json/clear_cx_counters", {
+                    "cx_name": 'all'})
                 time.sleep(monitor_interval)
 
         #rx_rate list is calculated
@@ -221,24 +204,16 @@ class VideoStreaming(Realm):
             self.http_profile.created_cx.clear()
 
     def file_create(self,ssh_passwd):
-        #change_path = os.path.dirname(os.path.abspath(__file__))
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(self.host, 22, 'root', ssh_passwd)
         time.sleep(20)
         ssh.exec_command("rm /usr/local/lanforge/nginx/html"+self.url[self.url.index('/'):])
         ssh.exec_command("sudo fallocate -l " + self.file_size + " /usr/local/lanforge/nginx/html" + self.url[self.url.index('/'):])
-        #os.chdir('/usr/local/lanforge/nginx/html/')
-        #192.168.208.92/video.txt
-        '''if os.path.isfile("/usr/local/lanforge/nginx/html"+self.url[self.url.index('/'):]):
-            os.system("sudo rm /usr/local/lanforge/nginx/html"+self.url[self.url.index('/'):])
-        os.system("sudo fallocate -l " + self.file_size + " /usr/local/lanforge/nginx/html"+self.url[self.url.index('/'):])'''
-        print("File creation done", self.file_size)
-        #os.chdir(change_path)
 
     def buffer_calculation(self,endp_dict,sta_avg,threshold,buffer_interval,final_data):
         for k in endp_dict.keys():
-            sta_avg.append(float(f"{((sum(endp_dict[k]) / 1000000) / len(endp_dict[k])):.2f}"))
+            sta_avg.append(float(f"{((sum(endp_dict[k]) / 1e6) / len(endp_dict[k])):.2f}"))
             iter, flag = 0, 0
             while True:
                 flg = 0
@@ -246,21 +221,25 @@ class VideoStreaming(Realm):
                     break
                 try:
                     # threshold = 700000 #for example
-                    if min(endp_dict[k]) > threshold:
+                    if min(endp_dict[k]) >= threshold:
                         break
-                    if min(endp_dict[k][iter:iter + buffer_interval]) > threshold:
+                    if min(endp_dict[k][iter:iter + buffer_interval]) >= threshold:
                         iter += buffer_interval
                     if endp_dict[k][iter] < threshold:
                         iter += 1
                         tmp = endp_dict[k][iter:iter + (buffer_interval - 1)]
                         if len(tmp) < (buffer_interval - 1):
                             break
-                        for j in tmp:
-                            iter += 1
-                            if j < threshold:
-                                flg += 1
-                            else:
-                                break
+                        if max(tmp) < threshold:
+                            iter += 4
+                            flg = 4
+                        else:
+                            for j in tmp:
+                                iter += 1
+                                if j < threshold:
+                                    flg += 1
+                                else:
+                                    break
                         if flg == (buffer_interval - 1):  # add buffer
                             flag += 1
                     else:
@@ -269,6 +248,16 @@ class VideoStreaming(Realm):
                     print(e)
                     break
             final_data[k] = flag
+
+    # divide the list into number of endpoints, Yield successive n-sized chunks from l.
+    def divide_chunks(self,rx_rate_len, l, n):
+        # looping till length l
+        for i in range(0, len(l), n):
+            if i + n < rx_rate_len:
+                yield l[i:i + n]
+            else:
+                extra = (i + n) - rx_rate_len
+                yield l[i:] + [0] * extra
 
 # getting video emulation rate from user to convert to mbps
 def emu_rate_from_usr(emulation_rate,max_speed):
@@ -297,6 +286,7 @@ def emu_rate_from_usr(emulation_rate,max_speed):
                     f"###{e}###\n provide correct video emulation rate with help command \n user's value: {emulation_rate}")
                 exit(1)
 
+
 def grph_commn(graph_ob,report_ob):
     graph_png = graph_ob.build_bar_graph()
     print("graph name {}".format(graph_png))
@@ -305,7 +295,7 @@ def grph_commn(graph_ob,report_ob):
     report_ob.build_graph()
 
 def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,expt_stal = 6,avg_rxrate = None,
-           sta_cnt=0, emu_rate = None):
+           sta_cnt=0, emu_rate = None, rxrate = None, sta_list = None):
     buffer = {}
     for i in range(len(bands)): #making list as dict format
         buffer[bands[i]] = buffer1[i]
@@ -332,16 +322,20 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
                 yield f"{i} Mbps"
     speeds = list(buffer[bands[0]].keys())
     data_rate = list(emu(emu_rate))
-    pass_fail,info,pas_fail_disp = [],[],[]
+    pass_fail,info,pas_fail_disp,csv_dataset,csv_band_speed = [],[],[],[],[]
     for bnds in buffer:
         for spd in buffer[bnds]:
+            #[i.insert(0,f"{bnds} - {(spd/1e6):.1f}Mbps") for i in rxrate[bnds][spd]]
+            csv_dataset.extend(rxrate[bnds][spd])
+            csv_band_speed.extend([f"{bnds} - {(spd/1e6):.1f}Mbps_{i+1}" for i in range(len(rxrate[bnds][spd]))])
+            sta_count = len(buffer[bnds][spd])
             if max(buffer[bnds][spd].values()) <= expt_stal:
                 pass_fail.append('Pass')
-                info.append(f"Station Pass : {sta_cnt}")
+                info.append(f"Station Pass : {sta_count}")
                 pas_fail_disp.append("All the stations got buffer less than or equal to expected stalls")
             elif min(buffer[bnds][spd].values()) > expt_stal:
                 pass_fail.append('Fail')
-                info.append(f"Station Fail : {sta_cnt}")
+                info.append(f"Station Fail : {sta_count}")
                 pas_fail_disp.append("One or more stations got buffer greater than expected stalls")
             else:
                 tmp = list(buffer[bnds][spd].values())
@@ -442,7 +436,6 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
                      _color=['blueviolet', 'darkorange', 'forestgreen'], _color_edge='black',
                      _grp_title="Throughput for each clients", _xaxis_step=step, _show_bar_value=True,_text_font=8,_text_rotation=45,
                      _legend_handles=None, _legend_loc="best", _legend_box=(1.0,0.5), _legend_ncol=2, _legend_fontsize=10)
-
             grph_commn(graph_ob = graph,report_ob = report)
 
     report.set_table_title("Input Setup Information")
@@ -453,7 +446,15 @@ def report(buffer1,test_setup_info,input_setup_info,threshold,duration,bands,exp
     print("returned file {}".format(html_file))
     print(html_file)
     report.write_pdf()
-
+    #sta_list.insert(0, "Mode-speed(Mbps)")
+    csv_band_speed.insert(0,"Stations")
+    csv_dataset.insert(0,sta_list)
+    #csv_band_speed = ["stations","5g-5.5mbps","5g-5.5mbps","5g-2mbps","5g-2mbps","2.4g-5.5mbps","2.4g-5.5mbps","2.4g-2mbps","2.4g-2mbps"]
+    #csv_dataset = [["sta1",'sta2',"sta3",'sta4'],[1,2,3,4],[11,22,33,44],[21,22,23,24],[31,32,33,34],[41,42,43,44],[51,52,53,54],[61,62,63,64],[71,72,73,74]]
+    csv = lf_csv(_columns=csv_band_speed,_rows=csv_dataset,_filename='video_stream.csv')
+    csv.generate_csv()
+    report.csv_file_name = "video_stream.csv"
+    report.move_csv_file()
 
 def main():
     parser = argparse.ArgumentParser(description="Netgear Video streaming Test Script \n"
@@ -466,8 +467,8 @@ def main():
     optional.add_argument('--mgr', help='hostname for where LANforge GUI is running', default='localhost')
     optional.add_argument('--mgr_port', help='port LANforge GUI HTTP service is running on', default=8080)
     optional.add_argument('--upstream_port', help='non-station port that generates traffic: eg: eth1', default='eth1')
-    optional.add_argument('--num_stations', type=int, help='number of stations to create if num_stations is odd and band is 5G/2.4G'
-                                                           'then script will automatically convert to even', default=40)
+    optional.add_argument('--num_stations', type=int, help='number of stations to create if num_stations is odd '
+                                                           'then script will automatically convert to even by adding one station', default=40)
     required.add_argument('--security', help='WiFi Security protocol: {open|wep|wpa2|wpa3')
     required.add_argument('--ssid', help='WiFi SSID for script object to associate to')
     required.add_argument('--passwd', help='WiFi passphrase/password/key')
@@ -495,29 +496,28 @@ def main():
     band_rad = [b.split("-") for b in args.bands_with_radio]    # split the band and radio separately
     vs_bands, vs_radio, max_speed = [], [], []
     list(map(lambda b : (vs_bands.append(b[0].title()),vs_radio.append(b[1])),band_rad))
-    band_dict, avg_rxrate_bands = [], {}
+    band_dict, avg_rxrate_bands, rxrate_bands = [], {}, {}
     print(f"Video Emulation rate {args.emulation_rate}")
     band_type = ['5G','2.4G','5G/2.4G']
     num = lambda ars : ars if ars % 2 == 0 else ars + 1
     emu_rate_from_usr(args.emulation_rate,max_speed)
     test_time = datetime.datetime.now().strftime("%b %d %H:%M:%S")
     print("video emulation rate in Mbps", max_speed,"\nTest started at ", test_time)
-
     for bands in vs_bands:
-        speed_dict = {}
+        speed_dict,speed_rxrate = {}, {}
         avg_rxrate_speed = {}
         print("bands--",bands)
-        num_stas = args.num_stations
+        num_stas = num(args.num_stations)
         if bands == '5G':
             radio = [vs_radio[vs_bands.index(bands)]]
         elif bands == '2.4G':
             radio = [vs_radio[vs_bands.index(bands)]]
         elif bands == '5G/2.4G':
-            num_stas = num(args.num_stations) // 2
+            num_stas = num_stas // 2
             radio = vs_radio[vs_bands.index(bands)].split(",")
         if bands not in band_type:
             raise ValueError("--bands_with_radio should be like 5G-wiphy0 2.4G-wiphy1 5G/2.4G-wiphy0,wiphy1\n but user input like",args.bands_with_radio)
-        clear_station, clear_traffic = True, True
+        clear_station, clear_traffic,create_file = True, True, True
         for speed in max_speed:
             speed = int(speed * 1e6) #from mbps convert to bps
             http = VideoStreaming(lfclient_host=args.mgr, lfclient_port=args.mgr_port,
@@ -532,8 +532,10 @@ def main():
             number = speed
             threshold = int((args.threshold/100) * float(number))
             print('speed-----' ,number,f"and {args.threshold}% percent threshold of given speed is-----", threshold)
-            http.file_create(ssh_passwd=args.lanforge_passwd)
-            http.create_sta_list()
+            if create_file:
+                http.file_create(ssh_passwd=args.lanforge_passwd)
+                create_file = False
+            http.create_sta_list() # creating station list
             http.build(clear_station = clear_station, clear_traffic = clear_traffic) #build stations and traffic
             clear_station = False
             time.sleep(2)
@@ -553,17 +555,8 @@ def main():
                                    created_cx=layer4connections,
                                    iterations=0)
             #rx_rate = random.sample(range(0,1000000),int((float(args.duration) * 60) * num_stas)) #sample data
-            while "" in rx_rate:
+            while "" in rx_rate: # if any uncleaned hidden station that will give empty values
                 rx_rate.pop(rx_rate.index(""))
-            # divide the list into number of endpoints, Yield successive n-sized chunks from l.
-            def divide_chunks(l, n):
-                # looping till length l
-                for i in range(0, len(l), n):
-                    if i+n < len(rx_rate):
-                        yield l[i:i + n]
-                    else:
-                        extra = (i+n) - len(rx_rate)
-                        yield l[i:] + [0]* extra
 
             # How many elements each list should have
             if bands == "5G/2.4G":
@@ -571,9 +564,9 @@ def main():
             else:
                 n = num_stas
 
-            divided_list= list(divide_chunks(rx_rate, n))
+            divided_list= list(http.divide_chunks(rx_rate_len = len(rx_rate),l=rx_rate, n = n))
             print(divided_list,"\nno.of times rx-rate calculated",len(divided_list))
-
+            speed_rxrate[speed] = divided_list
             #creating number of endpoints name  list
             num_sta = n
             endp_name_lst = []
@@ -591,7 +584,6 @@ def main():
                 for index, key in enumerate(endp_dict):
                         endp_dict[key].append(i[index])
 
-
             print("endp_dict----",endp_dict)
 
             final_data = dict.fromkeys(endp_dict.keys())
@@ -603,49 +595,16 @@ def main():
             # 'endp7': [157, 1005212, 1005257, 1005212, 1005257, 1005212],
             # 'endp8': [1005015, 1005257, 1005015, 1005257, 1005015, 1005257],
             # 'endp9': [1004524, 1005015, 1004524, 1005015, 1004524, 1005015]}
-            #loop = True
             sta_avg = []
             #threshold = 700000
             http.buffer_calculation(endp_dict,sta_avg,threshold,args.buffer_interval,final_data)
-            '''for k in endp_dict.keys():
-                sta_avg.append(float(f"{((sum(endp_dict[k])/1000000)/len(endp_dict[k])):.2f}"))
-                iter,flag = 0,0
-                while True:
-                    flg = 0
-                    if iter >= len(endp_dict[k]):
-                        break
-                    try:
-                        #threshold = 700000 #for example
-                        if min(endp_dict[k]) > threshold:
-                            break
-                        if min(endp_dict[k][iter:iter + args.buffer_interval]) > threshold:
-                            iter += args.buffer_interval
-                        if endp_dict[k][iter] < threshold :
-                            iter += 1
-                            tmp = endp_dict[k][iter:iter + (args.buffer_interval - 1)]
-                            if len(tmp) < (args.buffer_interval - 1):
-                                break
-                            for j in tmp:
-                                iter += 1
-                                if j < threshold:
-                                    flg += 1
-                                else:
-                                    break
-                            if flg == (args.buffer_interval - 1):    # add buffer
-                                flag += 1
-                        else:
-                            iter += 1
-                    except IndexError as e:
-                        print(e)
-                        break
-                final_data[k] = flag'''
-
             print("number of buffers in all endpoints",final_data)
             speed_dict[speed] = final_data
             avg_rxrate_speed[speed] = sta_avg
         print(speed_dict,"\navarage:-",avg_rxrate_speed)
         band_dict.append(speed_dict)
         avg_rxrate_bands[bands] = avg_rxrate_speed
+        rxrate_bands[bands] = speed_rxrate
     print(band_dict,"\n avarage-with-bands",avg_rxrate_bands)
     test_end = datetime.datetime.now().strftime("%b %d %H:%M:%S")
     print("Test ended at ", test_end)
@@ -665,7 +624,8 @@ def main():
         "Contact": "support@candelatech.com"
     }
     report(band_dict,test_setup_info,input_setup_info,args.threshold,args.duration,vs_bands,
-           expt_stal = args.expected_stalls, avg_rxrate = avg_rxrate_bands,sta_cnt=args.num_stations,emu_rate = args.emulation_rate)
+           expt_stal = args.expected_stalls, avg_rxrate = avg_rxrate_bands,sta_cnt=args.num_stations,emu_rate = args.emulation_rate,
+           rxrate = rxrate_bands,sta_list = layer4connections)
 
 
 if __name__ == '__main__':
