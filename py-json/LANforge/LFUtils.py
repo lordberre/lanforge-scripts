@@ -13,10 +13,12 @@ from time import sleep
 from random import seed
 import re
 import ipaddress
+import importlib
 
 seed(int(round(time.time() * 1000)))
 from random import randint
-from LANforge import LFRequest
+LANforge=importlib.import_module("lanforge-scripts.py-json.LANforge")
+LFRequest=importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 
 debug_printer = pprint.PrettyPrinter(indent=2)
 

@@ -11,9 +11,10 @@ import urllib
 from urllib import request
 from urllib import error
 from urllib import parse
-
 import json
-from LANforge import LFUtils
+import importlib
+LANforge=importlib.import_module("lanforge-scripts.py-json.LANforge")
+LFUtils=importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 
 
 class LFRequest:

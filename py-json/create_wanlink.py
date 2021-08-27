@@ -12,16 +12,18 @@ import time
 from time import sleep
 from urllib import error
 import pprint
-LANforge=importlib.import_module("lanforge-scripts.py-json.create_wanlink")
-from LANforge import LFRequest
-from LANforge import LFUtils
-from LANforge.LFUtils import NA
+LANforge=importlib.import_module("lanforge-scripts.py-json.LANforge")
+LFRequest=importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
+LFUtils=importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+# NA=importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils.NA")
+
 
 j_printer = pprint.PrettyPrinter(indent=2)
 # todo: this needs to change
 resource_id = 1
 
-def create(base_url="http://localhost:8080", args={}):
+def main(base_url="http://localhost:8080", args={}):
+   print(base_url)
    json_post = ""
    json_response = ""
    num_wanlinks = -1
@@ -48,21 +50,21 @@ def create(base_url="http://localhost:8080", args={}):
       lf_r = LFRequest.LFRequest(base_url+"/cli-json/rm_cx")
       lf_r.addPostData({
          'test_mgr': 'all',
-         'cx_name': 'wl_eg1'
+         'cx_name': args['name']
       })
       lf_r.jsonPost()
       sleep(0.05)
 
       lf_r = LFRequest.LFRequest(base_url+"/cli-json/rm_endp")
       lf_r.addPostData({
-         'endp_name': 'wl_eg1-A'
+         'endp_name': args['name']+"_A"
       })
       lf_r.jsonPost()
       sleep(0.05)
 
       lf_r = LFRequest.LFRequest(base_url+"/cli-json/rm_endp")
       lf_r.addPostData({
-         'endp_name': 'wl_eg1-B'
+         'endp_name': args['name']+"_B"
       })
       lf_r.jsonPost()
       sleep(0.05)
@@ -70,7 +72,7 @@ def create(base_url="http://localhost:8080", args={}):
    # create wanlink 1a
    lf_r = LFRequest.LFRequest(base_url+"/cli-json/add_wl_endp")
    lf_r.addPostData({
-       'alias': 'wl_eg1-A',
+       'alias': args['name']+"_A",
        'shelf': 1,
        'resource': '1',
        'port': port_a,
@@ -83,7 +85,7 @@ def create(base_url="http://localhost:8080", args={}):
    # create wanlink 1b
    lf_r = LFRequest.LFRequest(base_url+"/cli-json/add_wl_endp")
    lf_r.addPostData({
-       'alias': 'wl_eg1-B',
+       'alias': args['name']+"_B",
        'shelf': 1,
        'resource': '1',
        'port': port_b,
@@ -96,10 +98,10 @@ def create(base_url="http://localhost:8080", args={}):
    # create cx
    lf_r = LFRequest.LFRequest(base_url+"/cli-json/add_cx")
    lf_r.addPostData({
-      'alias': 'wl_eg1',
+      'alias': args['name'],
       'test_mgr': 'default_tm',
-      'tx_endp': 'wl_eg1-A',
-      'rx_endp': 'wl_eg1-B',
+      'tx_endp': args['name']+"_A",
+      'rx_endp': args['name']+"_B",
    })
    lf_r.jsonPost()
    sleep(0.05)
@@ -108,7 +110,7 @@ def create(base_url="http://localhost:8080", args={}):
    seen = 0
    while (seen < 1):
       sleep(1)
-      lf_r = LFRequest.LFRequest(base_url+"/wl/wl_eg1?fields=name,state,_links")
+      lf_r = LFRequest.LFRequest(base_url+"/wl/"+args['name']+"?fields=name,state,_links")
       try:
          json_response = lf_r.getAsJson()
          if (json_response is None):
@@ -117,7 +119,7 @@ def create(base_url="http://localhost:8080", args={}):
          for key,value in json_response.items():
             if (isinstance(value, dict)):
                if ("_links" in value):
-                  if (value["name"] == "wl_eg1"):
+                  if (value["name"] == args['name']):
                      seen = 1
                   #else:
                   #   print(" name was not wl_eg1")
@@ -135,7 +137,7 @@ def create(base_url="http://localhost:8080", args={}):
    lf_r = LFRequest.LFRequest(base_url+"/cli-json/set_cx_state")
    lf_r.addPostData({
       'test_mgr': 'all',
-      'cx_name': 'wl_eg1',
+      'cx_name': args['name'],
       'cx_state': 'RUNNING'
    })
    lf_r.jsonPost()
@@ -144,7 +146,7 @@ def create(base_url="http://localhost:8080", args={}):
    running = 0
    while (running < 1):
       sleep(1)
-      lf_r = LFRequest.LFRequest(base_url+"/wl/wl_eg1?fields=name,state,_links")
+      lf_r = LFRequest.LFRequest(base_url+"/wl/"+args['name']+"?fields=name,state,_links")
       try:
          json_response = lf_r.getAsJson()
          if (json_response is None):
@@ -152,7 +154,7 @@ def create(base_url="http://localhost:8080", args={}):
          for key,value in json_response.items():
             if (isinstance(value, dict)):
                if ("_links" in value):
-                  if (value["name"] == "wl_eg1"):
+                  if (value["name"] == args['name']):
                      if (value["state"].startswith("Run")):
                         LFUtils.debug_printer.pprint(json_response)
                         running = 1
@@ -167,14 +169,14 @@ def create(base_url="http://localhost:8080", args={}):
    lf_r = LFRequest.LFRequest(base_url+"/cli-json/set_cx_state")
    lf_r.addPostData({
       'test_mgr': 'all',
-      'cx_name': 'wl_eg1',
+      'cx_name': args['name'],
       'cx_state': 'STOPPED'
    })
    lf_r.jsonPost()
    running = 1
    while (running > 0):
       sleep(1)
-      lf_r = LFRequest.LFRequest(base_url+"/wl/wl_eg1?fields=name,eid,state,_links")
+      lf_r = LFRequest.LFRequest(base_url+"/wl/"+args['name']+"?fields=name,eid,state,_links")
       LFUtils.debug_printer.pprint(json_response)
       try:
          json_response = lf_r.getAsJson()
@@ -183,7 +185,7 @@ def create(base_url="http://localhost:8080", args={}):
          for key,value in json_response.items():
             if (isinstance(value, dict)):
                if ("_links" in value):
-                  if (value["name"] == "wl_eg1"):
+                  if (value["name"] == args['name']):
                      if (value["state"].startswith("Stop")):
                         LFUtils.debug_printer.pprint(json_response)
                         running = 0
