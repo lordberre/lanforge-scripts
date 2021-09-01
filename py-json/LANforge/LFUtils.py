@@ -17,8 +17,10 @@ import importlib
 
 seed(int(round(time.time() * 1000)))
 from random import randint
-LANforge=importlib.import_module("lanforge-scripts.py-json.LANforge")
-LFRequest=importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
+LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
+LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 
 debug_printer = pprint.PrettyPrinter(indent=2)
 
