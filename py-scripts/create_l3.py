@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
+# Create Layer-3 Cross Connection Using LANforge JSON AP : https://www.candelatech.com/cookbook.php?vol=fire&book=scripted+layer-3+test
+# Written by Candela Technologies Inc.
+# Updated by: Erin Grimes
 
-"""
-    This script will create a variable number of layer3 stations each with their own set of cross-connects and endpoints.
+# """
+#     This script will create a variable number of layer-3 stations each with their own set of cross-connects and endpoints.
 
-    If you want to
+#     If you want to
 
-    Use './create_l3.py --help' to see command line usage and options
-"""
+#     Use './create_l3.py --help' to see command line usage and options
+# """
 
 import sys
 import os
@@ -29,43 +32,51 @@ from realm import TestGroupProfile
 
 class CreateL3(Realm):
     def __init__(self,
-                 ssid, security, password, sta_list, name_prefix, upstream, radio,
-                 host="localhost", port=8080, mode=0, ap=None,
+                 # ssid, security, password, radio,
+                 # sta_list,
+                 name_prefix,
+                 # upstream,
+                 endp_b,
+                 endp_a,
+                 host="localhost", port=8080, mode=0,
+                 # ap=None,
                  side_a_min_rate=56, side_a_max_rate=0,
                  side_b_min_rate=56, side_b_max_rate=0,
-                 number_template="00000", use_ht160=False,
+                 # number_template="00000", use_ht160=False,
                  _debug_on=False,
                  _exit_on_error=False,
                  _exit_on_fail=False):
         super().__init__(host, port)
-        self.upstream = upstream
+        # self.upstream = upstream
         self.host = host
         self.port = port
-        self.ssid = ssid
-        self.sta_list = sta_list
-        self.security = security
-        self.password = password
-        self.radio = radio
+        self.endp_b = endp_b
+        self.endp_a = endp_a
+        # self.ssid = ssid
+        # self.sta_list = sta_list
+        # self.security = security
+        # self.password = password
+        # self.radio = radio
         self.mode = mode
-        self.ap = ap
-        self.number_template = number_template
-        self.debug = _debug_on
+        # self.ap = ap
+        # self.number_template = number_template
+        # self.debug = _debug_on
         self.name_prefix = name_prefix
         self.station_profile = self.new_station_profile()
         self.cx_profile = self.new_l3_cx_profile()
         self.station_profile.lfclient_url = self.lfclient_url
-        self.station_profile.ssid = self.ssid
-        self.station_profile.ssid_pass = self.password
-        self.station_profile.security = self.security
-        self.station_profile.number_template_ = self.number_template
-        self.station_profile.debug = self.debug
-        self.station_profile.use_ht160 = use_ht160
-        if self.station_profile.use_ht160:
-            self.station_profile.mode = 9
-        self.station_profile.mode = mode
-        if self.ap is not None:
-            self.station_profile.set_command_param("add_sta", "ap", self.ap)
-        # self.station_list= LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=2, padding_number_=10000, radio='wiphy0') #Make radio a user defined variable from terminal.
+        # self.station_profile.ssid = self.ssid
+        # self.station_profile.ssid_pass = self.password
+        # self.station_profile.security = self.security
+        # self.station_profile.number_template_ = self.number_template
+        # self.station_profile.debug = self.debug
+        # self.station_profile.use_ht160 = use_ht160
+        # if self.station_profile.use_ht160:
+        #     self.station_profile.mode = 9
+        # self.station_profile.mode = mode
+        # if self.ap is not None:
+        #     self.station_profile.set_command_param("add_sta", "ap", self.ap)
+        self.station_list= LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=2, padding_number_=10000, radio='wiphy0') #Make radio a user defined variable from terminal.
 
         self.cx_profile.host = self.host
         self.cx_profile.port = self.port
@@ -77,27 +88,27 @@ class CreateL3(Realm):
 
     def pre_cleanup(self):
         self.cx_profile.cleanup_prefix()
-        for sta in self.sta_list:
-            self.rm_port(sta, check_exists=True)
+        # for sta in self.sta_list:
+        #     self.rm_port(sta, check_exists=True)
 
     def build(self):
 
-        self.station_profile.use_security(self.security,
-                                          self.ssid,
-                                          self.password)
-        self.station_profile.set_number_template(self.number_template)
-        print("Creating stations")
-        self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
-        self.station_profile.set_command_param("set_port", "report_timer", 1500)
-        self.station_profile.set_command_flag("set_port", "rpt_timer", 1)
-        self.station_profile.create(radio=self.radio,
-                                    sta_names_=self.sta_list,
-                                    debug=self.debug)
+        # self.station_profile.use_security(self.security,
+        #                                   self.ssid,
+        #                                   self.password)
+        # self.station_profile.set_number_template(self.number_template)
+        # print("Creating stations")
+        # self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
+        # self.station_profile.set_command_param("set_port", "report_timer", 1500)
+        # self.station_profile.set_command_flag("set_port", "rpt_timer", 1)
+        # self.station_profile.create(radio=self.radio,
+        #                             sta_names_=self.sta_list,
+        #                             debug=self.debug)
         self.cx_profile.create(endp_type="lf_udp",
-                               side_a=self.station_profile.station_names,
-                               side_b=self.upstream,
+                               side_a=self.endp_a,
+                               side_b=self.endp_b,
                                sleep_time=0)
-        self._pass("PASS: Station build finished")
+        self._pass("PASS: Cross-connect build finished")
 
 
 def main():
@@ -105,42 +116,11 @@ def main():
         prog='create_l3.py',
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''\
-            Create stations to test connection and traffic on VAPs of varying security types (WEP, WPA, WPA2, WPA3, Open)
+            Generate traffic between two ports
             ''',
 
         description='''\
-test_ipv4_variable_time.py:
---------------------
-Generic command layout:
-
-python3 ./test_ipv4_variable_time.py
-    --upstream_port eth1
-    --radio wiphy0
-    --num_stations 32
-    --security {open|wep|wpa|wpa2|wpa3} \\
-    --mode   1
-        {"auto"   : "0",
-        "a"      : "1",
-        "b"      : "2",
-        "g"      : "3",
-        "abg"    : "4",
-        "abgn"   : "5",
-        "bgn"    : "6",
-        "bg"     : "7",
-        "abgnAC" : "8",
-        "anAC"   : "9",
-        "an"     : "10",
-        "bgnAC"  : "11",
-        "abgnAX" : "12",
-        "bgnAX"  : "13",
-    --ssid netgear
-    --password admin123
-    --a_min 1000
-    --b_min 1000
-    --ap "00:0e:8e:78:e1:76"
-    --number_template 0000
-    --debug
-            ''')
+        ''')
 
     required_args = None
     for group in parser._action_groups:
@@ -148,8 +128,11 @@ python3 ./test_ipv4_variable_time.py
             required_args = group
             break;
     if required_args is not None:
-        required_args.add_argument('--a_min', help='--a_min bps rate minimum for side_a', default=256000)
-        required_args.add_argument('--b_min', help='--b_min bps rate minimum for side_b', default=256000)
+        required_args.add_argument('--a_min', help='--a_min bps rate minimum for side_a', default=56000)
+        required_args.add_argument('--b_min', help='--b_min bps rate minimum for side_b', default=56000)
+        required_args.add_argument('--endp_a', help='--a_min bps rate minimum for side_a', default=["eth1"], action="append")
+        required_args.add_argument('--endp_b', help='--b_min bps rate minimum for side_b', default="eth2")
+
 
     optional_args = None
     for group in parser._action_groups:
@@ -158,31 +141,31 @@ python3 ./test_ipv4_variable_time.py
             break;
     if optional_args is not None:
         optional_args.add_argument('--mode', help='Used to force mode of stations')
-        optional_args.add_argument('--ap', help='Used to force a connection to a particular AP')
-        optional_args.add_argument('--number_template', help='Start the station numbering with a particular number. Default is 0000', default=0000)
+        # optional_args.add_argument('--ap', help='Used to force a connection to a particular AP')
+        # optional_args.add_argument('--number_template', help='Start the station numbering with a particular number. Default is 0000', default=0000)
     args = parser.parse_args()
 
     num_sta = 2
     if (args.num_stations is not None) and (int(args.num_stations) > 0):
         num_sta = int(args.num_stations)
 
-    station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=int(args.number_template), end_id_=num_sta+int(args.number_template) - 1, padding_number_=10000,
-                                          radio=args.radio)
+    # station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=int(args.number_template), end_id_=num_sta+int(args.number_template) - 1, padding_number_=10000,
+    #                                       radio=args.radio)
     ip_var_test = CreateL3(host=args.mgr,
                            port=args.mgr_port,
-                           number_template=str(args.number_template),
-                           sta_list=station_list,
+                           # number_template=str(args.number_template),
                            name_prefix="VT",
-                           upstream=args.upstream_port,
-                           ssid=args.ssid,
-                           password=args.passwd,
-                           radio=args.radio,
-                           security=args.security,
-                           use_ht160=False,
+                           endp_a=args.endp_a,
+                           endp_b=args.endp_b,
+                           # ssid=args.ssid,
+                           # password=args.passwd,
+                           # radio=args.radio,
+                           # security=args.security,
+                           # use_ht160=False,
                            side_a_min_rate=args.a_min,
                            side_b_min_rate=args.b_min,
                            mode=args.mode,
-                           ap=args.ap,
+                           # ap=args.ap,
                            _debug_on=args.debug)
 
     ip_var_test.pre_cleanup()
