@@ -1,15 +1,21 @@
-
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-from LANforge import LFRequest
-from LANforge import LFUtils
-from LANforge import set_port
+import sys
+import os
+import importlib
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+# from LANforge.lfcli_base import LFCliBase
+lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+# from LANforge import LFRequest
+LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
+# from LANforge import LFUtils
+LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+# from LANforge import set_port
+set_port = importlib.import_module("lanforge-scripts.py-json.LANforge.set_port")
 import pprint
 from pprint import pprint
 import time
-
-
-
 
 
 class QVLANProfile(LFCliBase):

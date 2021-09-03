@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-import port_utils
-from port_utils import PortUtils
+import sys
+import os
+import importlib
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
+# from LANforge.lfcli_base import LFCliBase
+lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+# import port_utils
+# from port_utils import PortUtils
+port_utils = importlib.import_module("lanforge-scripts.py-json.port_utils")
+PortUtils = port_utils.PortUtils
 from pprint import pprint
 import pprint
 import time

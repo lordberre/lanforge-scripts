@@ -2,8 +2,17 @@
 import re
 import time
 import pprint
-from lfdata import LFDataCollection
-from base_profile import BaseProfile
+import sys
+import os
+import importlib
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+# from lfdata import LFDataCollection
+lfdata = importlib.import_module("lanforge-scripts.py-json.lfdata")
+LFDataCollection = lfdata.LFDataCollection
+# from base_profile import BaseProfile
+base_profile = importlib.import_module("lanforge-scripts.py-json.base_profile")
+BaseProfile = base_profile.BaseProfile
 import os
 import datetime
 import base64
@@ -13,7 +22,6 @@ import time
 import random
 import string
 import datetime
-
 
 
 class L3CXProfile2(BaseProfile):

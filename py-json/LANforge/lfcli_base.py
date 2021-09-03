@@ -1,6 +1,8 @@
 #!env /usr/bin/python
 
 import sys
+import os
+import importlib
 import signal
 import traceback
 # Extend this class to use common set of debug and request features for your script
@@ -10,10 +12,15 @@ import random
 import string
 import datetime
 import argparse
-import LANforge.LFUtils
-from LANforge.LFUtils import *
-from LANforge import LFRequest
-import LANforge.LFRequest
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
+LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
+# import LANforge.LFUtils
+LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+# from LFUtils import *
+# from LANforge import LFRequest
+LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
+# import LANforge.LFRequest
 import csv
 import pandas as pd
 import os

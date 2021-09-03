@@ -7,32 +7,71 @@
 # 
 
 # Written by Candela Technologies Inc.
-#  Updated by:
-#
+# Updated by:
 
 
 # ---- ---- ---- ---- LANforge Base Imports ---- ---- ---- ----
-from LANforge import LFRequest
-from LANforge import LFUtils
-from LANforge.lfcli_base import LFCliBase
+import sys
+import os
+import importlib
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
+LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
 # ---- ---- ---- ---- Profile Imports ---- ---- ---- ----
-from l3_cxprofile import L3CXProfile
-from l3_cxprofile2 import L3CXProfile2
-from l4_cxprofile import L4CXProfile
-from lf_attenmod import ATTENUATORProfile
-from multicast_profile import MULTICASTProfile
-from http_profile import HTTPProfile
-from station_profile import StationProfile
-from fio_endp_profile import FIOEndpProfile
-from test_group_profile import TestGroupProfile
-from dut_profile import DUTProfile
-from vap_profile import VAPProfile
-from mac_vlan_profile import MACVLANProfile
-from wifi_monitor_profile import WifiMonitor
-from gen_cxprofile import GenCXProfile
-from qvlan_profile import QVLANProfile
-from port_utils import PortUtils
-from lfdata import LFDataCollection
+l3_cxprofile = importlib.import_module("lanforge-scripts.py-json.l3_cxprofile")
+# from l3_cxprofile import L3CXProfile
+L3CXProfile = l3_cxprofile.L3CXProfile
+# from l3_cxprofile2 import L3CXProfile2
+l3_cxprofile2 = importlib.import_module("lanforge-scripts.py-json.l3_cxprofile2")
+L3CXProfile2 = l3_cxprofile2.L3CXProfile2
+# from l4_cxprofile import L4CXProfile
+l4_cxprofile = importlib.import_module("lanforge-scripts.py-json.l4_cxprofile")
+L4CXProfile = l4_cxprofile.L4CXProfile
+# from lf_attenmod import ATTENUATORProfile
+lf_attenmod = importlib.import_module("lanforge-scripts.py-json.lf_attenmod")
+ATTENUATORProfile = lf_attenmod.ATTENUATORProfile
+# from multicast_profile import MULTICASTProfile
+multicast_profile = importlib.import_module("lanforge-scripts.py-json.multicast_profile")
+MULTICASTProfile = multicast_profile.MULTICASTProfile
+# from http_profile import HTTPProfile
+http_profile = importlib.import_module("lanforge-scripts.py-json.http_profile")
+HTTPProfile = http_profile.HTTPProfile
+# from station_profile import StationProfile
+station_profile = importlib.import_module("lanforge-scripts.py-json.station_profile")
+StationProfile = station_profile.StationProfile
+# from fio_endp_profile import FIOEndpProfile
+fio_endp_profile = importlib.import_module("lanforge-scripts.py-json.fio_endp_profile")
+FIOEndpProfile = fio_endp_profile.FIOEndpProfile
+# from test_group_profile import TestGroupProfile
+test_group_profile = importlib.import_module("lanforge-scripts.py-json.test_group_profile")
+TestGroupProfile = test_group_profile.TestGroupProfile
+# from dut_profile import DUTProfile
+dut_profile = importlib.import_module("lanforge-scripts.py-json.dut_profile")
+DUTProfile = dut_profile.DUTProfile
+# from vap_profile import VAPProfile
+vap_profile = importlib.import_module("lanforge-scripts.py-json.vap_profile")
+VAPProfile = vap_profile.VAPProfile
+# from mac_vlan_profile import MACVLANProfile
+mac_vlan_profile = importlib.import_module("lanforge-scripts.py-json.mac_vlan_profile")
+MACVLANProfile = mac_vlan_profile.MACVLANProfile
+# from wifi_monitor_profile import WifiMonitor
+wifi_monitor_profile = importlib.import_module("lanforge-scripts.py-json.wifi_monitor_profile")
+WifiMonitor = wifi_monitor_profile.WifiMonitor
+# from gen_cxprofile import GenCXProfile
+gen_cxprofile = importlib.import_module("lanforge-scripts.py-json.gen_cxprofile")
+GenCXProfile = gen_cxprofile.GenCXProfile
+# from qvlan_profile import QVLANProfile
+qvlan_profile = importlib.import_module("lanforge-scripts.py-json.qvlan_profile")
+QVLANProfile = qvlan_profile.QVLANProfile
+# from port_utils import PortUtils
+port_utils = importlib.import_module("lanforge-scripts.py-json.port_utils")
+PortUtils = port_utils.PortUtils
+# from lfdata import LFDataCollection
+lfdata = importlib.import_module("lanforge-scripts.py-json.lfdata")
+LFDataCollection = lfdata.LFDataCollection
 # ---- ---- ---- ---- Other Imports ---- ---- ---- ----
 import re
 import time
@@ -844,14 +883,14 @@ class Realm(LFCliBase):
 
     def new_l3_cx_profile(self, ver=1):
         if ver == 1:
-            import l3_cxprofile
+            # import l3_cxprofile
             cx_prof = l3_cxprofile.L3CXProfile(self.lfclient_host,
                               self.lfclient_port,
                               local_realm=self,
                               debug_=self.debug,
                               report_timer_=3000)
         elif ver == 2:
-            import l3_cxprofile2
+            # import l3_cxprofile2
             cx_prof = l3_cxprofile2.L3CXProfile2(self.lfclient_host,
                               self.lfclient_port,
                               local_realm=self,

@@ -3,6 +3,7 @@
 # Written by Candela Technologies Inc.
 # Updated by: Erin Grimes
 import sys
+import os
 import importlib
 import time
 from time import sleep
@@ -12,6 +13,8 @@ if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit()
 import pprint
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath('../..'), 'lanforge-scripts'))
 LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
 LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")

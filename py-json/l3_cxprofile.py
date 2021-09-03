@@ -1,7 +1,17 @@
 # !/usr/bin/env python3
 import pprint
 from pprint import pprint
-from LANforge.lfcli_base import LFCliBase
+import os
+import sys
+import importlib
+
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
+# from LANforge.lfcli_base import LFCliBase
+lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
+# from lfcli_base import LFCliBase
+LFCliBase = lfcli_base.LFCliBase
 import csv
 import pandas as pd
 import time

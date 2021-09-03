@@ -3,31 +3,36 @@
 # Written by Candela Technologies Inc.
 # Updated by: Erin Grimes
 
-# """
-#     This script will create a variable number of layer-3 stations each with their own set of cross-connects and endpoints.
-
-#     If you want to
-
-#     Use './create_l3.py --help' to see command line usage and options
-# """
+"""
+Example Command:
+./create_l3.py --endp_a 'eth1' --endp_b 'eth2' --min_rate_a '56000' --min_rate_b '40000'
+"""
 
 import sys
+import importlib
 import os
-
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
-
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
-
+# if 'py-json' not in sys.path:
+#     sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
 import argparse
-from LANforge.lfcli_base import LFCliBase
-from LANforge import LFUtils
-from realm import Realm
+# from LANforge.lfcli_base import LFCliBase
+# from lfcli_base import *
+lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+# from LANforge import LFUtils
+LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+# from realm import Realm
+realm = importlib.import_module("lanforge-scripts.py-json.realm")
+Realm = realm.Realm
+# from realm import TestGroupProfile
+TestGroupProfile = realm.TestGroupProfile
 import time
 import datetime
-from realm import TestGroupProfile
 
 
 class CreateL3(Realm):
@@ -40,8 +45,8 @@ class CreateL3(Realm):
                  endp_a,
                  host="localhost", port=8080, mode=0,
                  # ap=None,
-                 side_a_min_rate=56, side_a_max_rate=0,
-                 side_b_min_rate=56, side_b_max_rate=0,
+                 min_rate_a=56, max_rate_a=0,
+                 min_rate_b=56, max_rate_b=0,
                  # number_template="00000", use_ht160=False,
                  _debug_on=False,
                  _exit_on_error=False,
@@ -81,10 +86,10 @@ class CreateL3(Realm):
         self.cx_profile.host = self.host
         self.cx_profile.port = self.port
         self.cx_profile.name_prefix = self.name_prefix
-        self.cx_profile.side_a_min_bps = side_a_min_rate
-        self.cx_profile.side_a_max_bps = side_a_max_rate
-        self.cx_profile.side_b_min_bps = side_b_min_rate
-        self.cx_profile.side_b_max_bps = side_b_max_rate
+        self.cx_profile.side_a_min_bps = min_rate_a
+        self.cx_profile.side_a_max_bps = max_rate_a
+        self.cx_profile.side_b_min_bps = min_rate_b
+        self.cx_profile.side_b_max_bps = max_rate_b
 
     def pre_cleanup(self):
         self.cx_profile.cleanup_prefix()
@@ -116,7 +121,7 @@ def main():
         prog='create_l3.py',
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''\
-            Generate traffic between two ports
+            Generate traffic between ports
             ''',
 
         description='''\
@@ -128,11 +133,10 @@ def main():
             required_args = group
             break;
     if required_args is not None:
-        required_args.add_argument('--a_min', help='--a_min bps rate minimum for side_a', default=56000)
-        required_args.add_argument('--b_min', help='--b_min bps rate minimum for side_b', default=56000)
-        required_args.add_argument('--endp_a', help='--a_min bps rate minimum for side_a', default=["eth1"], action="append")
-        required_args.add_argument('--endp_b', help='--b_min bps rate minimum for side_b', default="eth2")
-
+        required_args.add_argument('--min_rate_a', help='--min_rate_a bps rate minimum for side_a', default=56000)
+        required_args.add_argument('--min_rate_b', help='--min_rate_b bps rate minimum for side_b', default=56000)
+        required_args.add_argument('--endp_a', help='--endp_a station list', default=["eth1"], action="append")
+        required_args.add_argument('--endp_b', help='--upstream port', default="eth2")
 
     optional_args = None
     for group in parser._action_groups:
@@ -162,8 +166,8 @@ def main():
                            # radio=args.radio,
                            # security=args.security,
                            # use_ht160=False,
-                           side_a_min_rate=args.a_min,
-                           side_b_min_rate=args.b_min,
+                           min_rate_a=args.min_rate_a,
+                           min_rate_b=args.min_rate_b,
                            mode=args.mode,
                            # ap=args.ap,
                            _debug_on=args.debug)

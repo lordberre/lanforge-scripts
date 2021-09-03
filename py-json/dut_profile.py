@@ -1,7 +1,14 @@
-
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-from LANforge import add_dut
+import sys
+import os
+import importlib
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+# from LANforge.lfcli_base import LFCliBase
+lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+# from LANforge import add_dut
+add_dut = importlib.import_module("lanforge-scripts.py-json.LANforge.add_dut")
 import pprint
 from pprint import pprint
 import time
