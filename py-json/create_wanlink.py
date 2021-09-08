@@ -111,7 +111,9 @@ def main(base_url, args={}):
     lf_r = LFRequest.LFRequest(base_url+"/cli-json/set_wanlink_info")
     lf_r.addPostData({
         'name': args['name']+"_A",
-        'max_jitter': args['jitter_A']
+        'max_jitter': args['jitter_A'],
+        'jitter_freq': args['jitter_freq_A'],
+        'drop_freq': args['drop_A']
     })
     lf_r.jsonPost()
     sleep(0.05)
@@ -120,7 +122,9 @@ def main(base_url, args={}):
     lf_r = LFRequest.LFRequest(base_url+"/cli-json/set_wanlink_info")
     lf_r.addPostData({
         'name': args['name']+"_B",
-        'max_jitter': args['jitter_B']
+        'max_jitter': args['jitter_B'],
+        'jitter_freq': args['jitter_freq_B'],
+        'drop_freq': args['drop_B']
     })
     lf_r.jsonPost()
     sleep(0.05)

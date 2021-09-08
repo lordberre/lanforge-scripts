@@ -2,6 +2,11 @@
 # Create and modify WAN Links from the command line.
 # Written by Candela Technologies Inc.
 # Updated by: Erin Grimes
+"""
+sample command:
+./test_wanlink.py --name my_wanlink4 --latency_A 20 --latency_B 69 --rate 1000 --jitter_A 53 --jitter_B 73 --jitter_freq 6 --drop_A 12 --drop_B 11
+"""
+
 import sys
 import os
 import importlib
@@ -67,6 +72,12 @@ def main():
         optional_args.add_argument('--jitter', help='The max jitter of both ports (ms)', default=None)
         optional_args.add_argument('--jitter_A', help='The max jitter of port A (ms)', default=None)
         optional_args.add_argument('--jitter_B', help='The max jitter of port B (ms)', default=None)
+        optional_args.add_argument('--jitter_freq', help='The jitter frequency of both ports (%)', default=None)
+        optional_args.add_argument('--jitter_freq_A', help='The jitter frequency of port A (%)', default=None)
+        optional_args.add_argument('--jitter_freq_B', help='The jitter frequency of port B (%)', default=None)
+        optional_args.add_argument('--drop', help='The drop frequency of both ports (%)', default=None)
+        optional_args.add_argument('--drop_A', help='The drop frequency of port A (%)', default=None)
+        optional_args.add_argument('--drop_B', help='The drop frequency of port B (%)', default=None)
         # todo: packet loss A and B
         # todo: jitter A and B
         for group in parser._action_groups:
@@ -91,7 +102,13 @@ def main():
         "rate_B": (parseargs.rate_B if parseargs.rate_B is not None else parseargs.rate),
         "jitter": (parseargs.jitter),
         "jitter_A": (parseargs.jitter_A if parseargs.jitter_A is not None else parseargs.jitter),
-        "jitter_B": (parseargs.jitter_B if parseargs.jitter_B is not None else parseargs.jitter)
+        "jitter_B": (parseargs.jitter_B if parseargs.jitter_B is not None else parseargs.jitter),
+        "jitter_freq": (parseargs.jitter),
+        "jitter_freq_A": (parseargs.jitter_freq_A if parseargs.jitter_freq_A is not None else parseargs.jitter_freq),
+        "jitter_freq_B": (parseargs.jitter_freq_B if parseargs.jitter_freq_B is not None else parseargs.jitter_freq),
+        "drop": (parseargs.drop),
+        "drop_A": (parseargs.drop_A if parseargs.drop_A is not None else parseargs.drop),
+        "drop_B": (parseargs.drop_B if parseargs.drop_B is not None else parseargs.drop),
     }
     ltw = LANtoWAN(args)
     ltw.create_wanlinks()
