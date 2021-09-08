@@ -77,7 +77,6 @@ def main(base_url, args={}):
         'port': args['port_A'],
         'latency': args['latency_A'],
         'max_rate': args['rate_A'],
-        # 'max_jitter': args['jitter_A']
     })
     lf_r.jsonPost()
     sleep(0.05)
@@ -91,7 +90,6 @@ def main(base_url, args={}):
         'port': args['port_B'],
         'latency': args['latency_B'],
         'max_rate': args['rate_B'],
-        # 'max_jitter': args['jitter_B']
     })
     lf_r.jsonPost()
     sleep(0.05)
