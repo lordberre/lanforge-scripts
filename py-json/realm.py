@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 # The Realm Class is inherited by most python tests.  Realm Class inherites from LFCliBase.
 # The Realm Class contains the configurable components for LANforge,
 # For example L3 / L4 cross connects, stations.  Also contains helper methods
@@ -8,17 +7,26 @@
 # Written by Candela Technologies Inc.
 #  Updated by:
 
-# ---- ---- ---- ---- LANforge Base Imports ---- ---- ---- ----
 import sys
 import os
 import importlib
+import re
+import time
+import pprint
+from pprint import pprint
+
+# ---- ---- ---- ---- LANforge Base Imports ---- ---- ---- ----
+
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+
 LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
 LFCliBase = lfcli_base.LFCliBase
+
 # ---- ---- ---- ---- Profile Imports ---- ---- ---- ----
+
 l3_cxprofile = importlib.import_module("lanforge-scripts.py-json.l3_cxprofile")
 L3CXProfile = l3_cxprofile.L3CXProfile
 l3_cxprofile2 = importlib.import_module("lanforge-scripts.py-json.l3_cxprofile2")
@@ -53,11 +61,6 @@ port_utils = importlib.import_module("lanforge-scripts.py-json.port_utils")
 PortUtils = port_utils.PortUtils
 lfdata = importlib.import_module("lanforge-scripts.py-json.lfdata")
 LFDataCollection = lfdata.LFDataCollection
-# ---- ---- ---- ---- Other Imports ---- ---- ---- ----
-import re
-import time
-import pprint
-from pprint import pprint
 
 
 def wpa_ent_list():
