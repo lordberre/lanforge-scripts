@@ -36,8 +36,8 @@ def main(base_url, args={}):
     print(lf_r.get_as_json())
 
     # ports to set as endpoints
-    port_a = "rd0a"
-    port_b = "rd1a"
+    port_a = args['port_A']
+    port_b = args['port_B']
 
     try:
         json_response = lf_r.getAsJson()
