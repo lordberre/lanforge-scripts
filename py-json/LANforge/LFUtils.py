@@ -2,22 +2,22 @@
 # Define useful common methods                                  -
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 import sys
-
-if sys.version_info[0] != 3:
-    print("This script requires Python 3")
-    exit()
 import os
+import importlib
 import pprint
 import time
 from time import sleep
 from random import seed
+from random import randint
 import re
 import ipaddress
 
-seed(int(round(time.time() * 1000)))
-from random import randint
-from LANforge import LFRequest
+if sys.version_info[0] != 3:
+    print("This script requires Python 3")
+    exit()
 
+seed(int(round(time.time() * 1000)))
+LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 debug_printer = pprint.PrettyPrinter(indent=2)
 
 NA = "NA"  # used to indicate parameter to skip
