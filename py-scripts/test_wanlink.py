@@ -38,48 +38,48 @@ class LANtoWAN(Realm):
         print("Creating wanlinks")
         # print("the latency is {laten}\n".format(laten=self.latency))
 
-        # create redirects for wanlink
-        url = "/cli-json/add_rdd"
-        data = {
-            "shelf": shelf,
-            "resource": resource,
-            "port": "rd0a",
-            "peer_ifname": "rd1a"
-        }
-        self.json_post(url, data)
+        # # create redirects for wanlink
+        # url = "/cli-json/add_rdd"
+        # data = {
+        #     "shelf": shelf,
+        #     "resource": resource,
+        #     "port": "rd0a",
+        #     "peer_ifname": "rd1a"
+        # }
+        # self.json_post(url, data)
 
-        url = "/cli-json/add_rdd"
-        data = {
-            "shelf": shelf,
-            "resource": resource,
-            "port": "rd1a",
-            "peer_ifname": "rd0a"
-        }
-        self.json_post(url, data)
-        time.sleep(.05)
+        # url = "/cli-json/add_rdd"
+        # data = {
+        #     "shelf": shelf,
+        #     "resource": resource,
+        #     "port": "rd1a",
+        #     "peer_ifname": "rd0a"
+        # }
+        # self.json_post(url, data)
+        # time.sleep(.05)
 
-        # create wanlink endpoints
-        url = "/cli-json/add_wl_endp"
-        data = {
-            "alias": "wlan1",
-            "shelf": shelf,
-            "resource": resource,
-            "port": "rd0a",
-            "latency": self.args['latency_A'],
-            "max_rate": self.args['rate_A']
-        }
-        self.json_post(url, data)
+        # # create wanlink endpoints
+        # url = "/cli-json/add_wl_endp"
+        # data = {
+        #     "alias": "wlan1",
+        #     "shelf": shelf,
+        #     "resource": resource,
+        #     "port": "rd0a",
+        #     "latency": self.args['latency_A'],
+        #     "max_rate": self.args['rate_A']
+        # }
+        # self.json_post(url, data)
 
-        url = "/cli-json/add_wl_endp"
-        data = {
-            "alias": "wlan2",
-            "shelf": shelf,
-            "resource": resource,
-            "port": "rd1a",
-            "latency": self.args['latency_B'],
-            "max_rate": self.args['rate_B']
-        }
-        self.json_post(url, data)
+        # url = "/cli-json/add_wl_endp"
+        # data = {
+        #     "alias": "wlan2",
+        #     "shelf": shelf,
+        #     "resource": resource,
+        #     "port": "rd1a",
+        #     "latency": self.args['latency_B'],
+        #     "max_rate": self.args['rate_B']
+        # }
+        # self.json_post(url, data)
         create_wanlink.main('http://'+self.args['host']+':8080', self.args)
 
     def cleanup(self): pass
