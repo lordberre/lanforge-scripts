@@ -17,6 +17,8 @@ if sys.version_info[0] != 3:
     exit()
 
 seed(int(round(time.time() * 1000)))
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
 LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 debug_printer = pprint.PrettyPrinter(indent=2)
 
