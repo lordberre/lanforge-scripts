@@ -3,16 +3,22 @@
 # Written by Candela Technologies Inc.
 # Updated by: Erin Grimes
 import sys
+import os
+import importlib
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
-if 'py-json' not in sys.path:
-    sys.path.append('../py-json')
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 import argparse
-from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
-from realm import Realm
-import time
+# from LANforge.lfcli_base import LFCliBase
+lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+# from LANforge.LFUtils import *
+LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+# from realm import Realm
+realm = importlib.import_module("lanforge-scripts.py-json.realm")
+Realm = realm.Realm
 create_wanlink = importlib.import_module("lanforge-scripts.py-json.create_wanlink")
 
 
@@ -137,3 +143,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
