@@ -20,6 +20,7 @@ if 'lanforge-scripts' not in sys.path:
 
 LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+
 j_printer = pprint.PrettyPrinter(indent=2)
 # todo: this needs to change
 resource_id = 1
