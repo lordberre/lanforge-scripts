@@ -16,12 +16,14 @@ if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit()
 
-seed(int(round(time.time() * 1000)))
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
+
 LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
+
 debug_printer = pprint.PrettyPrinter(indent=2)
 
+seed(int(round(time.time() * 1000)))
 NA = "NA"  # used to indicate parameter to skip
 ADD_STA_FLAGS_DOWN_WPA2 = 68719477760
 REPORT_TIMER_MS_FAST = 1500
