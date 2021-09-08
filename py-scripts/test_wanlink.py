@@ -16,12 +16,9 @@ if sys.version_info[0] != 3:
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 import argparse
-# from LANforge.lfcli_base import LFCliBase
 lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
 LFCliBase = lfcli_base.LFCliBase
-# from LANforge.LFUtils import *
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
-# from realm import Realm
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
 create_wanlink = importlib.import_module("lanforge-scripts.py-json.create_wanlink")
@@ -37,7 +34,6 @@ class LANtoWAN(Realm):
 
     def create_wanlinks(self, shelf=1, resource=1, max_rate=1544000):
         print("Creating wanlinks")
-        # print("the latency is {laten}\n".format(laten=self.latency))
         create_wanlink.main('http://'+self.args['host']+':8080', self.args)
 
     def cleanup(self): pass
@@ -58,8 +54,6 @@ def main():
             optional_args = group
             break
     if optional_args is not None:
-        # optional_args.add_argument('--lanport', help='Select the port you want for lanport', default='wiphy0')
-        # optional_args.add_argument('--wanport', help='Select the port you want for wanport', default='wiphy1'
         optional_args.add_argument('--name', help='The name of the wanlink', default="wl_eg1")
         optional_args.add_argument('--port_A', help='Endpoint A', default="eth1")
         optional_args.add_argument('--port_B', help='Endpoint B', default="eth2")
@@ -88,9 +82,6 @@ def main():
     args = {
         "host": parseargs.mgr,
         "port": parseargs.mgr_port,
-        # "ssid": parseargs.ssid,
-        # "security": parseargs.security,
-        # "password": parseargs.passwd,
         "name": parseargs.name,
         "port_A": parseargs.port_A,
         "port_B": parseargs.port_B,
