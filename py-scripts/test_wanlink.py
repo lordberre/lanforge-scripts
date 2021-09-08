@@ -64,6 +64,9 @@ def main():
         optional_args.add_argument('--latency', help='The delay of both ports', default=20)
         optional_args.add_argument('--latency_A', help='The delay of port A', default=None)
         optional_args.add_argument('--latency_B', help='The delay of port B', default=None)
+        optional_args.add_argument('--jitter', help='The max jitter of both ports (ms)', default=None)
+        optional_args.add_argument('--jitter_A', help='The max jitter of port A (ms)', default=None)
+        optional_args.add_argument('--jitter_B', help='The max jitter of port B (ms)', default=None)
         # todo: packet loss A and B
         # todo: jitter A and B
         for group in parser._action_groups:
@@ -85,7 +88,10 @@ def main():
         "latency_B": (parseargs.latency_B if parseargs.latency_B is not None else parseargs.latency),
         "rate": (parseargs.rate),
         "rate_A": (parseargs.rate_A if parseargs.rate_A is not None else parseargs.rate),
-        "rate_B": (parseargs.rate_B if parseargs.rate_B is not None else parseargs.rate)
+        "rate_B": (parseargs.rate_B if parseargs.rate_B is not None else parseargs.rate),
+        "jitter": (parseargs.jitter),
+        "jitter_A": (parseargs.jitter_A if parseargs.jitter_A is not None else parseargs.jitter),
+        "jitter_B": (parseargs.jitter_B if parseargs.jitter_B is not None else parseargs.jitter)
     }
     ltw = LANtoWAN(args)
     ltw.create_wanlinks()

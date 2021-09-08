@@ -35,19 +35,6 @@ def main(base_url, args={}):
     lf_r = LFRequest.LFRequest(base_url+"/wl/list")
     print(lf_r.get_as_json())
 
-    # ports to set as endpoints
-    port_a = args['port_A']
-    port_b = args['port_B']
-
-    try:
-        json_response = lf_r.getAsJson()
-        LFUtils.debug_printer.pprint(json_response)
-        for key, value in json_response.items():
-            if (isinstance(value, dict) and "_links" in value):
-                num_wanlinks = 1
-    except urllib.error.HTTPError as error:
-        print("Error code "+error.code)
-
     # remove old wanlinks
     if (num_wanlinks > 0):
         lf_r = LFRequest.LFRequest(base_url+"/cli-json/rm_cx")
@@ -57,6 +44,15 @@ def main(base_url, args={}):
         })
         lf_r.jsonPost()
         sleep(0.05)
+
+    try:
+        json_response = lf_r.getAsJson()
+        LFUtils.debug_printer.pprint(json_response)
+        for key, value in json_response.items():
+            if (isinstance(value, dict) and "_links" in value):
+                num_wanlinks = 1
+    except urllib.error.HTTPError as error:
+        print("Error code "+error.code)
 
         lf_r = LFRequest.LFRequest(base_url+"/cli-json/rm_endp")
         lf_r.addPostData({
@@ -72,28 +68,30 @@ def main(base_url, args={}):
         lf_r.jsonPost()
         sleep(0.05)
 
-    # create wanlink 1a
+    # create wanlink endpoint A
     lf_r = LFRequest.LFRequest(base_url+"/cli-json/add_wl_endp")
     lf_r.addPostData({
         'alias': args['name']+"_A",
         'shelf': 1,
         'resource': '1',
-        'port': port_a,
+        'port': args['port_A'],
         'latency': args['latency_A'],
-        'max_rate': args['rate_A']
+        'max_rate': args['rate_A'],
+        # 'max_jitter': args['jitter_A']
     })
     lf_r.jsonPost()
     sleep(0.05)
 
-    # create wanlink 1b
+    # create wanlink endpoint B
     lf_r = LFRequest.LFRequest(base_url+"/cli-json/add_wl_endp")
     lf_r.addPostData({
         'alias': args['name']+"_B",
         'shelf': 1,
         'resource': '1',
-        'port': port_b,
+        'port': args['port_B'],
         'latency': args['latency_B'],
-        'max_rate': args['rate_B']
+        'max_rate': args['rate_B'],
+        # 'max_jitter': args['jitter_B']
     })
     lf_r.jsonPost()
     sleep(0.05)
@@ -105,6 +103,24 @@ def main(base_url, args={}):
        'test_mgr': 'default_tm',
        'tx_endp': args['name']+"_A",
        'rx_endp': args['name']+"_B",
+    })
+    lf_r.jsonPost()
+    sleep(0.05)
+
+    # modify wanlink endpoint A
+    lf_r = LFRequest.LFRequest(base_url+"/cli-json/set_wanlink_info")
+    lf_r.addPostData({
+        'name': args['name']+"_A",
+        'max_jitter': args['jitter_A']
+    })
+    lf_r.jsonPost()
+    sleep(0.05)
+
+    # modify wanlink endpoint B
+    lf_r = LFRequest.LFRequest(base_url+"/cli-json/set_wanlink_info")
+    lf_r.addPostData({
+        'name': args['name']+"_B",
+        'max_jitter': args['jitter_B']
     })
     lf_r.jsonPost()
     sleep(0.05)
