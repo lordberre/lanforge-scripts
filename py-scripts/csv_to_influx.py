@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-
-
 import sys
 import os
-
-if 'py-dashboard' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-dashboard'))
-
+import importlib
 from InfluxRequest import *
-from cv_test_manager import *
 from pathlib import Path
 import argparse
+
+if 'lanforge-scripts' not in sys.path:
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+
+cv_test_manager = importlib.import_module("lanforge-scripts.py-scripts.cv_test_manager")
 
 
 class CSVtoInflux:
