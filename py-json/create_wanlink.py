@@ -31,6 +31,7 @@ j_printer = pprint.PrettyPrinter(indent=2)
 # todo: this needs to change
 resource_id = 1
 
+
 def main(base_url, args={}):
     print(base_url)
     json_post = ""
