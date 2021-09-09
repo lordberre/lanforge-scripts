@@ -85,7 +85,7 @@ if sys.version_info[0]  != 3:
     exit()
 
 if 'lanforge-scripts' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
 
 lf_report = importlib.import_module("lanforge-scripts.py-scripts.lf_report")
 
