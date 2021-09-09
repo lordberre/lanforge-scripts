@@ -1,6 +1,7 @@
 #!env /usr/bin/python
-
 import sys
+import os
+import importlib
 import signal
 import traceback
 # Extend this class to use common set of debug and request features for your script
@@ -10,14 +11,15 @@ import random
 import string
 import datetime
 import argparse
-import LANforge.LFUtils
-from LANforge.LFUtils import *
-from LANforge import LFRequest
-import LANforge.LFRequest
 import csv
 import pandas as pd
-import os
 
+if sys.version_info[0] != 3:
+    print("This script requires Python 3")
+    exit()
+
+LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 
 class LFCliBase:
 

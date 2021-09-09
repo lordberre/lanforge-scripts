@@ -17,8 +17,13 @@ import urllib
 from urllib import error
 import pprint
 
+if sys.version_info[0] != 3:
+    print("This script requires Python 3")
+    exit()
+
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+
 LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 j_printer = pprint.PrettyPrinter(indent=2)
