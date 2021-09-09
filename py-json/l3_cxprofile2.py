@@ -19,6 +19,7 @@ if 'lanforge-scripts' not in sys.path:
 
 lfdata = importlib.import_module("lanforge-scripts.py-json.lfdata")
 base_profile = importlib.import_module("lanforge-scripts.py-json.base_profile")
+BaseProfile = base_profile.BaseProfile
 
 
 class L3CXProfile2(BaseProfile):
