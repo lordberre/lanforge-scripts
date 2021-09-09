@@ -17,6 +17,7 @@ import pprint
 
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+
 LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 
