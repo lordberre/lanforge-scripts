@@ -11,7 +11,7 @@ if 'lanforge-scripts' not in sys.path:
 
 lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
 LFCliBase = lfcli_base.LFCliBase
-add_monitor = importlib.import_module("lanforge-scripts.py_json.LANforge.add_monitor")
+add_monitor = importlib.import_module("lanforge-scripts.py-json.LANforge.add_monitor")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 set_wifi_radio = importlib.import_module("lanforge-scripts.py-json.LANforge.set_wifi_radio")
 set_radio_mode = set_wifi_radio.set_radio_mode
