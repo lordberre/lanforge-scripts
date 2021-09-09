@@ -3,7 +3,12 @@
 # Written by Candela Technologies Inc.
 # Updated by: Erin Grimes
 import sys
+<<<<<<< HEAD
 
+=======
+import urllib
+import importlib
+>>>>>>> 2d66865f (Create wanlink main() changed to create() for quali testing)
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
@@ -18,14 +23,12 @@ import pprint
 
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath('../..'), 'lanforge-scripts'))
-LANforge = importlib.import_module("lanforge-scripts.py-json.LANforge")
+
 LFRequest = importlib.import_module("lanforge-scripts.py-json.LANforge.LFRequest")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
-
 j_printer = pprint.PrettyPrinter(indent=2)
 # todo: this needs to change
 resource_id = 1
-
 
 def main(base_url, args={}):
     print(base_url)
