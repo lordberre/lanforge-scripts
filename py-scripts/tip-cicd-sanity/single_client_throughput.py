@@ -34,7 +34,7 @@ if sys.version_info[0] != 3:
     exit(1)
 
 if 'lanforge-scripts' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+    sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
 
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 removeCX = LFUtils.removeCX
