@@ -29,8 +29,8 @@ LFCliBase = lfcli_base.LFCliBase
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
 
-
 webconsole_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.getcwd())))
+
 
 class ConnectionTest(LFCliBase):
 
