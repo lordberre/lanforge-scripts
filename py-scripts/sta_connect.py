@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 #  This will create a station, create TCP and UDP traffic, run it a short amount of time,
 #  and verify whether traffic was sent and received.  It also verifies the station connected
 #  to the requested BSSID if bssid is specified as an argument.
@@ -18,6 +17,8 @@ if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
+removeCX = LFUtils.removeCX
+removeEndps = LFUtils.removeEndps
 lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
 LFCliBase = lfcli_base.LFCliBase
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
