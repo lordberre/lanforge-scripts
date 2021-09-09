@@ -867,15 +867,13 @@ class Realm(LFCliBase):
 
     def new_l3_cx_profile(self, ver=1):
         if ver == 1:
-            import l3_cxprofile
-            cx_prof = l3_cxprofile.L3CXProfile(self.lfclient_host,
+            cx_prof = L3CXProfile(self.lfclient_host,
                               self.lfclient_port,
                               local_realm=self,
                               debug_=self.debug,
                               report_timer_=3000)
         elif ver == 2:
-            import l3_cxprofile2
-            cx_prof = l3_cxprofile2.L3CXProfile2(self.lfclient_host,
+            cx_prof = L3CXProfile2(self.lfclient_host,
                               self.lfclient_port,
                               local_realm=self,
                               debug_=self.debug,
@@ -883,7 +881,7 @@ class Realm(LFCliBase):
         return cx_prof
 
     def new_l4_cx_profile(self, ver=1):
-        if ver == 1 :
+        if ver == 1:
             cx_prof = L4CXProfile(self.lfclient_host, self.lfclient_port, local_realm=self, debug_=self.debug)
         #elif ver == 2:
             # import l4_cxprofile2
