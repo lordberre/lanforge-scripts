@@ -6,16 +6,18 @@
 sample command:
 ./test_wanlink.py --name my_wanlink4 --latency_A 20 --latency_B 69 --rate 1000 --jitter_A 53 --jitter_B 73 --jitter_freq 6 --drop_A 12 --drop_B 11
 """
-
 import sys
 import os
 import importlib
+import argparse
+
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
+
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
-import argparse
+
 lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
 LFCliBase = lfcli_base.LFCliBase
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
