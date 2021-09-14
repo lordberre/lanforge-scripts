@@ -13,6 +13,7 @@ import datetime
 import argparse
 import csv
 import pandas as pd
+import re
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
@@ -207,7 +208,7 @@ class LFCliBase:
 
             lf_r.addPostData(_data)
             if debug_:
-                LANforge.LFUtils.debug_printer.pprint(_data)
+                LFUtils.debug_printer.pprint(_data)
             json_response = lf_r.json_post(show_error=debug_,
                                           debug=debug_,
                                           response_json_list_=response_json_list_,
@@ -245,7 +246,7 @@ class LFCliBase:
                                        die_on_error_=self.exit_on_error)
             lf_r.addPostData(_data)
             if debug_:
-                LANforge.LFUtils.debug_printer.pprint(_data)
+                LFUtils.debug_printer.pprint(_data)
             json_response = lf_r.json_put(show_error=self.debug,
                                           debug=debug_,
                                           response_json_list_=response_json_list_,
