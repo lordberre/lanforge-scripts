@@ -23,6 +23,7 @@ if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
 
 lf_report = importlib.import_module("lanforge-scripts.py-scripts.lf_report")
+LF_Report = lf_report.LF_Report
 
 # Any style components can be used
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -520,7 +521,7 @@ Example: kpi_csv_sq.py --store --png --show --path <path to read kpi.csv> (read 
         print("Need to enter an action of --store --png --show ")
 
     # create report class for reporting
-    report = lf_report(_path = __path,
+    report = LF_Report(_path = __path,
                        _results_dir_name =__dir,
                        _output_html="lf_qa.html",
                        _output_pdf="lf_qa.pdf" )        
