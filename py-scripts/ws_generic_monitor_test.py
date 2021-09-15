@@ -13,7 +13,7 @@ if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 
 ws_generic_monitor = importlib.import_module("lanforge-scripts.py-json.ws_generic_monitor")
-WS_Listener = ws_generic_monitor.WS_listener
+WS_Listener = ws_generic_monitor.WS_Listener
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
 
