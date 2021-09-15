@@ -8,7 +8,7 @@ import argparse
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 
-cv_test_manager = importlib.import_module("lanforge-scripts.py-scripts.cv_test_manager")
+cv_test_manager = importlib.import_module("lanforge-scripts.py-json.cv_test_manager")
 cv_add_base_parser = cv_test_manager.cv_add_base_parser
 cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
 InfluxRequest = importlib.import_module("lanforge-scripts.py-dashboard.InfluxRequest")
