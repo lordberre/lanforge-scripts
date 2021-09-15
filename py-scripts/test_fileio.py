@@ -30,7 +30,6 @@ import sys
 import os
 import importlib
 import argparse
-import realm
 import time
 import datetime
 import pprint
@@ -47,6 +46,8 @@ LFCliBase = lfcli_base.LFCliBase
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 add_file_endp = importlib.import_module("lanforge-scripts.py-json.LANforge.add_file_endp")
 fe_fstype = add_file_endp.fe_fstype
+realm = importlib.import_module("lanforge-scripts.py-json.realm")
+Realm = realm.Realm
 
 
 class FileIOTest(LFCliBase):
