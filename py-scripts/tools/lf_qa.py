@@ -23,7 +23,6 @@ if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../../")))
 
 lf_report = importlib.import_module("lanforge-scripts.py-scripts.lf_report")
-from lf_report import lf_report
 
 # Any style components can be used
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
