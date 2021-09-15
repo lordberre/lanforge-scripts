@@ -10,7 +10,6 @@ import time
 import json
 from pprint import pprint
 import argparse
-from InfluxRequest import *
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
@@ -25,6 +24,9 @@ realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
 cv_test_reports = importlib.import_module("lanforge-scripts.py-json.cv_test_reports")
 lf_rpt = cv_test_reports.lanforge_reports
+InfluxRequest = importlib.import_module("lanforge-scripts.py-dashboard.InfluxRequest")
+influx_add_parser_args = InfluxRequest.influx_add_parser_args
+RecordInflux = InfluxRequest.RecordInflux
 
 
 def cv_base_adjust_parser(args):
