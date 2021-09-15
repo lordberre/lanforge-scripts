@@ -19,7 +19,7 @@ LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
 test_ip_variable_time = importlib.import_module("lanforge-scripts.py-scripts.test_ip_variable_time")
-IPVariableTime = test_ip_variable_time.IPVariable_Time
+IPVariableTime = test_ip_variable_time.IPVariableTime
 
 
 class TTLSTest(LFCliBase):
