@@ -19,7 +19,6 @@ if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 
 import argparse
-from LANforge import LFUtils
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
