@@ -35,7 +35,7 @@ import pdfkit
 # internal candela references included during intial phases, to be deleted at future date
 # https://candelatech.atlassian.net/wiki/spaces/LANFORGE/pages/372703360/Scripting+Data+Collection+March+2021
 # base report class
-class LF_Report():
+class lf_report():
     def __init__(self,
                 #_path the report directory under which the report directories will be created.
                 _path = "/home/lanforge/html-reports",
