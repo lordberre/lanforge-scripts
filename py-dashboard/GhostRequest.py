@@ -24,7 +24,7 @@ if sys.version_info[0] != 3:
 if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 
-GrafanaRequest = importlib.import_module("lanforges-scripts.py-dashboard.GrafanaRequest")
+GrafanaRequest = importlib.import_module("lanforge-scripts.py-dashboard.GrafanaRequest")
 from InfluxRequest import RecordInflux
 
 
