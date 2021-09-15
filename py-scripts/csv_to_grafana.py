@@ -4,7 +4,6 @@ import os
 import importlib
 import argparse
 import json
-from influx2 import RecordInflux
 import random
 import string
 
@@ -22,6 +21,8 @@ CSVtoInflux = csv_to_influx.CSVtoInflux
 influx_add_parser_args = csv_to_influx.influx_add_parser_args
 grafana_profile = importlib.import_module("lanforge-scripts.py-scripts.grafana_profile")
 UseGrafana = grafana_profile.UseGrafana
+influx = importlib.import_module("lanforge-scripts.py-scripts.influx")
+RecordInflux = influx.RecordInflux
 
 
 class data_to_grafana(LFCliBase):
