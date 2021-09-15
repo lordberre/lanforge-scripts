@@ -49,7 +49,6 @@ import sys
 import os
 import importlib
 from pprint import pprint
-from csv_to_influx import *
 import re
 import serial
 import pexpect
@@ -73,6 +72,7 @@ lf_report = importlib.import_module("lanforge-scripts.py-scripts.lf_report")
 LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
+csv_to_influx = importlib.import_module("lanforge-scripts.py-scripts.csv_to_influx")
 
 
 # This class handles running the test and generating reports.
