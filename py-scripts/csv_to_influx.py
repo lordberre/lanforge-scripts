@@ -13,6 +13,7 @@ cv_add_base_parser = cv_test_manager.cv_add_base_parser
 cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
 InfluxRequest = importlib.import_module("lanforge-scripts.py-dashboard.InfluxRequest")
 RecordInflux = InfluxRequest.RecordInflux
+influx_add_parser_args = InfluxRequest.influx_add_parser_args
 
 class CSVtoInflux:
     def __init__(self,
