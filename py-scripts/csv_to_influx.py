@@ -41,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser()
     cv_add_base_parser(parser)
 
-    parser.add_argument('--path', append=True)
+    parser.add_argument('--path', action='append')
 
     args = parser.parse_args()
 
