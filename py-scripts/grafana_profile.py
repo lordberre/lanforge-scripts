@@ -20,6 +20,7 @@ if 'lanforge-scripts' not in sys.path:
 
 # from GrafanaRequest import GrafanaRequest
 GrafanaRequest = importlib.import_module("lanforge-scripts.py-dashboard.GrafanaRequest")
+GrafanaRequest = GrafanaRequest.GrafanaRequest
 lfcli_base = importlib.import_module("lanforge-scripts.py-json.LANforge.lfcli_base")
 LFCliBase = lfcli_base.LFCliBase
 
