@@ -23,6 +23,8 @@ grafana_profile = importlib.import_module("lanforge-scripts.py-scripts.grafana_p
 UseGrafana = grafana_profile.UseGrafana
 influx = importlib.import_module("lanforge-scripts.py-scripts.influx")
 RecordInflux = influx.RecordInflux
+InfluxRequest = importlib.import_module("lanforge-scripts.py-dashboard.InfluxRequest")
+influx_add_parser_args = InfluxRequest.influx_add_parser_args
 
 
 class data_to_grafana(LFCliBase):
