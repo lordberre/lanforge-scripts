@@ -25,7 +25,8 @@ if 'lanforge-scripts' not in sys.path:
     sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
 
 GrafanaRequest = importlib.import_module("lanforge-scripts.py-dashboard.GrafanaRequest")
-from InfluxRequest import RecordInflux
+InfluxRequest = importlib.import_module("lanforge-scripts.py-dashboard.InfluxRequest")
+RecordInflux = InfluxRequest.RecordInflux
 
 
 class CSVReader:
