@@ -73,6 +73,8 @@ LFUtils = importlib.import_module("lanforge-scripts.py-json.LANforge.LFUtils")
 realm = importlib.import_module("lanforge-scripts.py-json.realm")
 Realm = realm.Realm
 csv_to_influx = importlib.import_module("lanforge-scripts.py-scripts.csv_to_influx")
+InfluxRequest = importlib.import_module("lanforge-scripts.py-dashboard.InfluxRequest")
+influx_add_parser_args = InfluxRequest.influx_add_parser_args
 
 
 # This class handles running the test and generating reports.
