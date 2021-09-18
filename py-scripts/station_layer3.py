@@ -1,26 +1,21 @@
-#!/usr/bin/env python3
+'''this script creates 1 station on given arguments
+how to run - [lanforge@LF4-Node2 py-scripts]$ python3 station_layer3.py -hst localhost -s TestAP22 -pwd [BLANK] -sec open -rad wiphy0
 '''
-this script creates 1 station on given arguments
-how to run - [lanforge@LF4-Node2 py-scripts]$ python3 station_banao.py -hst localhost -s TestAP22 -pwd [BLANK] -sec open -rad wiphy0
-'''
+
 import sys
-import os
-import importlib
 import argparse
 import time
-
- 
-sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
-
-LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
-lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
-LFCliBase = lfcli_base.LFCliBase
-realm = importlib.import_module("py-json.realm")
-Realm = realm.Realm
-
+if 'py-json' not in sys.path:
+    sys.path.append('../py-json')
+from LANforge import LFUtils
+from LANforge import lfcli_base
+from LANforge.lfcli_base import LFCliBase
+from LANforge.LFUtils import *
+import realm
+from realm import Realm
 
 class STATION(LFCliBase):
-    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radio, sta_list=None, name_prefix="L3Test", upstream="eth2"):
+    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radio, sta_list, upstream, name_prefix="L3Test"):
         super().__init__(lfclient_host, lfclient_port)
         self.host = lfclient_host
         self.port = lfclient_port
@@ -58,7 +53,7 @@ class STATION(LFCliBase):
 
     def build(self):
         self.station_profile.use_security(self.security, self.ssid, self.paswd)
-        self.station_profile.create(radio=self.radio)
+        self.station_profile.create(radio=self.radio,  sta_names_=self.sta_list, debug=self.debug)
         self.cx_profile.create(endp_type="lf_udp", side_a=self.station_profile.station_names, side_b=self.upstream,
                                sleep_time=0)
 
@@ -89,6 +84,7 @@ def main():
     parser.add_argument('-pwd', '--passwd', type=str, help='password to connect to ssid')
     parser.add_argument('-sec', '--security', type=str, help='security')
     parser.add_argument('-rad', '--radio', type=str, help='radio at which client will be connected')
+    parser.add_argument('-upstream', '--upstream_port', help="provide upstream port like eth1/eth2", default="eth1")
     #parser.add_argument()
     args = parser.parse_args()
     num_sta = 1
@@ -97,10 +93,11 @@ def main():
                                             end_id=num_sta - 1,
                                             padding_number=10000,
                                             radio=args.radio)
-    obj = STATION(lfclient_host= args.host, lfclient_port=8080, ssid=args.ssid , paswd=args.passwd, security=args.security, radio=args.radio, sta_list=station_list)
+    obj = STATION(lfclient_host= args.host, lfclient_port=8080, ssid=args.ssid , paswd=args.passwd, security=args.security, radio=args.radio, sta_list=station_list, upstream=args.upstream_port)
     obj.precleanup(station_list)
     obj.build()
     obj.start(station_list)
+
 
 if __name__ == '__main__':
     main()
