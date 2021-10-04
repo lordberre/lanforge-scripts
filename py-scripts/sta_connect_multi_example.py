@@ -1,27 +1,40 @@
 #!/usr/bin/env python3
-
-
 # Example of how to instantiate StaConnect and run the test
-
 import sys
+import os
+import importlib
+import argparse
+
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
-if 'py-json' not in sys.path:
-    sys.path.append('../py-json')
+
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
 # if you lack __init__.py in this directory you will not find sta_connect module
-import pprint
-from pprint import pprint
-import sta_connect
-from sta_connect import *
-import realm
-from realm import Realm
-import LANforge
-from LANforge import LFUtils
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
+sta_connect = importlib.import_module("py-scripts.sta_connect")
+StaConnect = sta_connect.StaConnect
+
 
 def main():
+    parser = argparse.ArgumentParser(
+        prog='sta_connected_multip_example.py',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog='''\
+        sta_connected_multip_example.py
+
+            ''',
+        description='''\
+Example of how to instantiate StaConnect and run the test
+        ''')
+    #args = parser.parse_args() - add this line if adding arguments
+    parser.parse_args()
+
     # create multiple OPEN stations
     station_names = LFUtils.port_name_series(start_id=0, end_id=1)
 

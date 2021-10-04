@@ -113,23 +113,24 @@ path: Orbit Current
 traf_use_sta: 0
 
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
-import json
-from os import path
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_test_manager import cv_test as cvtest
-from cv_test_manager import *
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cvtest = cv_test_manager.cv_test
+cv_add_base_parser = cv_test_manager.cv_add_base_parser
+cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
+
 
 class MeshTest(cvtest):
     def __init__(self,
@@ -217,7 +218,10 @@ class MeshTest(cvtest):
 
 def main():
 
-    parser = argparse.ArgumentParser("""
+    parser = argparse.ArgumentParser(
+        prog="lf_mesh_test.py",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="""
     Open this file in an editor and read the top notes for more details.
 
     Example:
@@ -242,9 +246,9 @@ def main():
 
     parser.add_argument("-u", "--upstream", type=str, default="",
                         help="Upstream port for wifi capacity test ex. 1.1.eth2")
-
+    # argparse uses the % formatting so use %%
     parser.add_argument("--download_speed", default="",
-                        help="Specify requested download speed.  Percentage of theoretical is also supported.  Default: 85%")
+                        help="Specify requested download speed.  Percentage of theoretical is also supported.  Default: 85%%")
     parser.add_argument("--upload_speed", default="",
                         help="Specify requested upload speed.  Percentage of theoretical is also supported.  Default: 0")
     parser.add_argument("--duration", default="",

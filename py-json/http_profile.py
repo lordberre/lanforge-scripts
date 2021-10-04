@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-import port_utils
-from port_utils import PortUtils
-from pprint import pprint
-import pprint
+import sys
+import os
+import importlib
 import time
+
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+port_utils = importlib.import_module("py-json.port_utils")
+PortUtils = port_utils.PortUtils
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+
 
 class HTTPProfile(LFCliBase):
     def __init__(self, lfclient_host, lfclient_port, local_realm, debug_=False):
@@ -20,6 +27,7 @@ class HTTPProfile(LFCliBase):
         self.dest = "/dev/null"
         self.port_util = PortUtils(self.local_realm)
         self.max_speed = 0 #infinity
+        self.quiesce_after = 0  # infinity
 
     def check_errors(self, debug=False):
         fields_list = ["!conn", "acc.+denied", "bad-proto", "bad-url", "other-err", "total-err", "rslv-p", "rslv-h",
@@ -157,7 +165,9 @@ class HTTPProfile(LFCliBase):
                     "timeout": 10,
                     "url_rate": self.requests_per_ten,
                     "url": url,
-                    "proxy_auth_type": 0x200
+                    "proxy_auth_type": 0x200,
+                    "quiesce_after": self.quiesce_after,
+                    "max_speed": self.max_speed
                 }
             else:
                 endp_data = {
@@ -172,7 +182,8 @@ class HTTPProfile(LFCliBase):
                     "ssl_cert_fname": "ca-bundle.crt",
                     "proxy_port": 0,
                     "max_speed": self.max_speed,
-                    "proxy_auth_type": 0x200
+                    "proxy_auth_type": 0x200,
+                    "quiesce_after": self.quiesce_after
                 }
             url = "cli-json/add_l4_endp"
             self.local_realm.json_post(url, endp_data, debug_=debug_,

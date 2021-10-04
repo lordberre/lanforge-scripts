@@ -24,13 +24,14 @@ LICENSE:
 
 INCLUDE_IN_README
 '''
-
+# CAUTION: adding imports to this file which are not in update_dependencies.py is not advised
 import os
 import shutil
 import datetime
 
 import pandas as pd
 import pdfkit
+import argparse
 
 # internal candela references included during intial phases, to be deleted at future date
 # https://candelatech.atlassian.net/wiki/spaces/LANFORGE/pages/372703360/Scripting+Data+Collection+March+2021
@@ -41,14 +42,14 @@ class lf_report():
                 _path = "/home/lanforge/html-reports",
                 _alt_path = "",
                 _date = "",
-                _title="LANForge Test Run Heading",
+                _title="LANForge Unit Test Run Heading",
                 _table_title="LANForge Table Heading",
                 _graph_title="LANForge Graph Title",
                 _obj = "",
                 _obj_title = "",
                 _output_html="outfile.html",
                 _output_pdf="outfile.pdf",
-                _results_dir_name = "LANforge_Test_Results",
+                _results_dir_name = "LANforge_Test_Results_Unit_Test",
                 _output_format = 'html',  # pass in on the write functionality, current not used
                 _dataframe="",
                 _path_date_time="",
@@ -84,10 +85,13 @@ class lf_report():
             self.csv_file_name=""
             self.html = ""
             self.custom_html = ""
+            self.pdf_link_html = ""
             self.objective = _obj
             self.obj_title = _obj_title
             #self.systeminfopath = ""
             self.date_time_directory = ""
+            self.log_directory = ""
+            
             self.banner_directory = "artifacts"
             self.banner_file_name = "banner.png"    # does this need to be configurable
             self.logo_directory = "artifacts"       
@@ -95,9 +99,10 @@ class lf_report():
             self.logo_footer_file_name = "candela_swirl_small-72h.png"      # does this need to be configurable.
             self.current_path = os.path.dirname(os.path.abspath(__file__))
             self.custom_css = _custom_css
-            # pass in _date to allow to change after construction
+            # note: the following 3 calls must be in order
             self.set_date_time_directory(_date,_results_dir_name)
             self.build_date_time_directory()
+            self.build_log_directory()
 
             self.font_file = "CenturyGothic.woff"
             # move the banners and candela images to report path
@@ -115,6 +120,7 @@ class lf_report():
 
     def copy_css(self):
         reportcss_src_file = str(self.current_path)+'/'+str(self.banner_directory)+'/report.css'
+        # print("copy_css: source file is: "+reportcss_src_file)
         reportcss_dest_file = str(self.path_date_time)+'/report.css'
 
         customcss_src_file = str(self.current_path)+'/'+str(self.banner_directory)+'/'+str(self.custom_css)
@@ -181,6 +187,16 @@ class lf_report():
                 os.mkdir(self.path_date_time)
         print("report path : {}".format(self.path_date_time))    
 
+    def build_log_directory(self):
+        if self.log_directory =="":
+            self.log_directory = os.path.join(self.path_date_time,"log")
+        try:
+            if not os.path.exists(self.log_directory):
+                os.mkdir(self.log_directory)
+        except:
+            print("exception making {}".format(self.log_directory))
+            exit(1)
+
     def set_text(self,_text):
         self.text = _text
 
@@ -223,12 +239,20 @@ class lf_report():
 
     def get_path(self):
         return self.path
+
+    def get_parent_path(self):
+        parent_path = os.path.dirname(self.path)
+        return parent_path
+
     # get_path_date_time, get_report_path and need to be the same
     def get_path_date_time(self):
         return self.path_date_time
 
     def get_report_path(self):
         return self.path_date_time
+
+    def get_log_path(self):
+        return self.log_directory
 
     def file_add_path(self, file):
         output_file = str(self.path_date_time)+'/'+ str(file)
@@ -286,6 +310,26 @@ class lf_report():
             self.write_output_pdf = "{}/{}-{}".format(self.path_date_time,self.date,self.output_pdf)
             pdfkit.from_file(self.write_output_html, self.write_output_pdf, options=options)
 
+    def get_pdf_path(self):
+        pdf_link_path = "{}/{}-{}".format(self.path_date_time, self.date, self.output_pdf)
+        return pdf_link_path
+        
+    def build_pdf_link(self,_pdf_link_name,_pdf_link_path):
+        self.pdf_link_html = """
+            <!-- pdf link -->
+            <a href="{pdf_link_path}" target="_blank">{pdf_link_name}</a>
+            <br>
+        """.format(pdf_link_path=_pdf_link_path,pdf_link_name=_pdf_link_name)
+        self.html += self.pdf_link_html
+
+    def build_link(self,_link_name,_link_path):
+        self.link = """
+            <!-- link -->
+            <a href="{link_path}" target="_blank">{link_name}</a>
+            <br>
+        """.format(link_path=_link_path,link_name=_link_name)
+        self.html += self.link
+
     def generate_report(self):
         self.write_html()            
         self.write_pdf()
@@ -297,33 +341,39 @@ class lf_report():
         self.build_table()
         self.end_content_div()
 
+    def get_html_head(self, title='Untitled'):
+        return """<head>
+        <meta charset='UTF-8'>
+        <meta name='viewport' content='width=device-width, initial-scale=1' />
+        <style>
+        body {{ margin: 0; padding: 0; }}
+        </style>
+        <link rel='stylesheet' href='report.css' />
+        <link rel='stylesheet' href='custom.css' />
+        <title>{title}</title>
+    </head>""".format(title=title)
+
     def build_banner(self):
         # NOTE: {{ }} are the ESCAPED curly braces
+        # JBR removed deep indentation of html tag because it makes browser view-source is hard to debug
+        # JBR suggests rename method to start_html_doc()
         self.banner_html = """<!DOCTYPE html>
-                        <html lang='en'>
-                        <head>
-                            <meta charset='UTF-8'>
-                            <meta name='viewport' content='width=device-width, initial-scale=1' />
-                            <style>
-                            body {{ margin: 0; padding: 0; }}
-                            </style>
-                            <link rel='stylesheet' href='report.css' />
-                            <link rel='stylesheet' href='custom.css' />
-                            <title>{title}</title>
-                        </head>
-                        <body>
-                        <div id='BannerBack'>
-                            <div id='Banner'>
-                                <br/>
-                                <img id='BannerLogo' align='right' src="CandelaLogo2-90dpi-200x90-trans.png" border='0'/>
-                                <div class='HeaderStyle'>
-                                    <br>
-                                    <h1 class='TitleFontPrint' style='color:darkgreen;'> {title} </h1>
-                                    <h3 class='TitleFontPrint' style='color:darkgreen;'>{date}</h3>
-                                    </div>
-                            </div>
-                        </div>
+<html lang='en'>
+    {head_tag}
+    <body>
+        <div id='BannerBack'>
+            <div id='Banner'>
+                <br/>
+                <img id='BannerLogo' align='right' src="CandelaLogo2-90dpi-200x90-trans.png" border='0'/>
+                <div class='HeaderStyle'>
+                    <br>
+                    <h1 class='TitleFontPrint' style='color:darkgreen;'>{title}</h1>
+                    <h3 class='TitleFontPrint' style='color:darkgreen;'>{date}</h3>
+                </div>
+            </div>
+        </div>
                  """.format(
+            head_tag=self.get_html_head(title=self.title),
             title=self.title,
             date=self.date,
         )
@@ -331,31 +381,26 @@ class lf_report():
 
     def build_banner_left(self):
         # NOTE: {{ }} are the ESCAPED curly braces
+        # JBR suggests rename method to start_html_doc()
+        # This method violates DRY, if the ID of the body/div#BannerBack/div element is actually necessary
+        # to specify, this needs to be made a parameter for build_banner() or start_html_doc()
         self.banner_html = """<!DOCTYPE html>
-                        <html lang='en'>
-                        <head>
-                            <meta charset='UTF-8'>
-                            <meta name='viewport' content='width=device-width, initial-scale=1' />
-                            <style>
-                            body {{ margin: 0; padding: 0; }}
-                            </style>
-                            <link rel='stylesheet' href='report.css' />
-                            <link rel='stylesheet' href='custom.css' />
-                            <title>{title}</title>
-                        </head>
-                        <body>
-                        <div id='BannerBack'>
-                            <div id='BannerLeft'>
-                                <br/>
-                                <img id='BannerLogo' align='right' src="CandelaLogo2-90dpi-200x90-trans.png" border='0'/>
-                                <div class='HeaderStyle'>
-                                    <br>
-                                    <h1 class='TitleFontPrint' style='color:darkgreen;'> {title} </h1>
-                                    <h3 class='TitleFontPrint' style='color:darkgreen;'>{date}</h3>
-                                    </div>
-                            </div>
-                        </div>
+<html lang='en'>
+    {head_tag}
+    <body>
+        <div id='BannerBack'>
+            <div id='BannerLeft'>
+                <br/>
+                <img id='BannerLogo' align='right' src="CandelaLogo2-90dpi-200x90-trans.png" border='0'/>
+                <div class='HeaderStyle'>
+                    <br>
+                    <h1 class='TitleFontPrint' style='color:darkgreen;'>{title}</h1>
+                    <h3 class='TitleFontPrint' style='color:darkgreen;'>{date}</h3>
+                </div>
+            </div>
+        </div>
                  """.format(
+            head_tag=self.get_html_head(title=self.title),
             title=self.title,
             date=self.date,
         )
@@ -427,51 +472,63 @@ class lf_report():
         self.html += setup_information
 
     def build_footer(self):
-        self.footer_html = """<!DOCTYPE html>
-                            <html lang='en'>
-                            <footer>
-                                <meta charset='UTF-8'>
-                                <meta name='viewport' content='width=device-width, initial-scale=1' />
-                                <style>
-                                body {{ margin: 0; padding: 0; }}
-                                </style>
-                                <link rel='stylesheet' href='report.css' />
-                                <link rel='stylesheet' href='custom.css' />
-                            </footer>
-                        <body>
-                            <div class='FooterStyle'>
-                                <a href="https://www.candelatech.com/">
-                                <img id='BannerLogoFooter' align='right' src="candela_swirl_small-72h.png" border='0'/>
-                                <p>Generate by Candela Technologies LANforge network testing tool</p>
-                                <p><a href="https://www.candelatech.com">www.candelatech.com</a><p>
-                            </div>
-                        </body>
-
-                        """
+        self.footer_html = """
+    <footer class='FooterStyle'>
+        <a href="https://www.candelatech.com/"><img 
+            id='BannerLogoFooter' align='right' src="candela_swirl_small-72h.png" border='0'/></a>
+        <p>Generated by Candela Technologies LANforge network testing tool</p>
+        <p><a href="https://www.candelatech.com">www.candelatech.com</a><p>
+    </footer>
+        """
         self.html += self.footer_html
 
     def build_footer_no_png(self):
-        self.footer_html = """<!DOCTYPE html>
-                            <html lang='en'>
-                            <footer>
-                                <meta charset='UTF-8'>
-                                <meta name='viewport' content='width=device-width, initial-scale=1' />
-                                <style>
-                                body {{ margin: 0; padding: 0; }}
-                                </style>
-                                <link rel='stylesheet' href='report.css' />
-                                <link rel='stylesheet' href='custom.css' />
-                            </footer>
-                        <body>
-                            <div class='FooterStyle'>
-                                <p>Generate by Candela Technologies LANforge network testing tool</p>
-                                <p><a href="https://www.candelatech.com">www.candelatech.com</a><p>
-                            </div>
-                        </body>
-
-                        """
+        self.footer_html = """
+    <footer class='FooterStyle'>
+        <p>Generate by Candela Technologies LANforge network testing tool</p>
+        <p><a href="https://www.candelatech.com">www.candelatech.com</a><p>
+    </footer>"""
         self.html += self.footer_html
 
+    def copy_js(self):
+        self.html += """
+<script>
+function fallbackCopyTextToClipboard(text) {
+  var textArea = document.createElement("textarea");
+  textArea.value = text;
+  
+  // Avoid scrolling to bottom
+  textArea.style.top = "0";
+  textArea.style.left = "0";
+  textArea.style.position = "fixed";
+
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  try {
+    var successful = document.execCommand('copy');
+    var msg = successful ? 'successful' : 'unsuccessful';
+    console.log('Fallback: Copying text command was ' + msg);
+  } catch (err) {
+    console.error('Fallback: Oops, unable to copy', err);
+  }
+  document.body.removeChild(textArea);
+}
+function copyTextToClipboard(ele) {
+  var text = ele.innerHTML || '';
+  if (!navigator.clipboard) {
+    fallbackCopyTextToClipboard(text);
+    return;
+  }
+  navigator.clipboard.writeText(text).then(function() {
+    console.log('Async: Copying to clipboard was successful!');
+  }, function(err) {
+    console.error('Async: Could not copy text: ', err);
+  });
+}
+</script>
+        """
 
     def build_custom(self):
         self.html += self.custom_html
@@ -503,6 +560,16 @@ class lf_report():
 
 # Unit Test
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog="lf_report.py",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="Reporting library Unit Test")
+    parser.add_argument('--lfmgr', help='sample argument: where LANforge GUI is running', default='localhost')    
+    # the args parser is not really used , this is so the report is not generated when testing 
+    # the imports with --help
+    args = parser.parse_args()
+    print("LANforge manager {lfmgr}".format(lfmgr=args.lfmgr))
+
 
     # Testing: generate data frame 
     dataframe = pd.DataFrame({

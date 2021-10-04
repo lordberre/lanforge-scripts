@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
 import sys
-import pprint
 import os
+import importlib
+import time
+import datetime
+import argparse
+
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-import argparse
-from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
-from LANforge import LFUtils
-import l3_cxprofile
-import realm
-import time
-import datetime
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
+l3_cxprofile = importlib.import_module("py-json.l3_cxprofile")
 
 
 # Currently, this test can only be applied to UDP connections
@@ -60,7 +62,7 @@ class L3PowersaveTraffic(LFCliBase):
         self.new_monitor = realm.WifiMonitor(self.lfclient_url, self.local_realm, debug_=_debug_on)
 
     def build(self):
-        self.station_profile.use_security("open", ssid=self.ssid, passwd=self.password)
+        self.station_profile.use_security(self.security, ssid=self.ssid, passwd=self.password)
         self.station_profile.set_number_template(self.prefix)
         self.station_profile.set_command_flag("add_sta", "create_admin_down", 1)
         self.station_profile.set_command_param("set_port", "report_timer", 1500)
@@ -153,12 +155,23 @@ class L3PowersaveTraffic(LFCliBase):
 
 
 def main():
-    lfjson_host = "localhost"
+    parser = Realm.create_basic_argparse(
+        prog='test_l3_powersave_traffic.py',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog='''\
+        test_l3_powersave_traffic.py
+
+            ''',
+        description='''\
+Example of creating traffic on an l3 connection
+        ''')
+    args = parser.parse_args()
+
+    lfjson_host = args.mgr
     lfjson_port = 8080
-    # station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=4, padding_number_=10000)
-    station_list = ["sta0000", "sta0001", "sta0002", "sta0003"]
-    ip_powersave_test = L3PowersaveTraffic(lfjson_host, lfjson_port, ssid="j-open-36", security="open",
-                                           password="[BLANK]", station_list=station_list, side_a_min_rate=2000,
+    station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=4, padding_number_=10000)
+    ip_powersave_test = L3PowersaveTraffic(lfjson_host, lfjson_port, ssid=args.ssid, security=args.security,
+                                           password=args.passwd, station_list=station_list, side_a_min_rate=2000,
                                            side_b_min_rate=2000, side_a_max_rate=0,
                                            side_b_max_rate=0, prefix="00000", test_duration="30s",
                                            _debug_on=False, _exit_on_error=True, _exit_on_fail=True)

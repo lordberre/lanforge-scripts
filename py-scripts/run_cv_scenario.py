@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
-
 # This script will set the LANforge to a BLANK database then it will load the specified database
 # and start a graphical report
-
+import argparse
+import importlib
+import os
+import pprint
 import sys
+import time
+from time import sleep
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append('../py-json')
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-import argparse
-from LANforge import LFUtils
-from LANforge import lfcli_base
-from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
-import realm
-from realm import Realm
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
 
 """
     cvScenario.scenario_db = args.scenario_db
@@ -37,6 +39,7 @@ class RunCvScenario(LFCliBase):
         self.test_profile = test_scenario_
         self.localrealm = Realm(lfclient_host=lfhost, lfclient_port=lfport, debug_=debug_)
         self.report_name = None
+        self.load_timeout_sec = 2 * 60
 
     def get_report_file_name(self):
         return self.report_name
@@ -49,7 +52,8 @@ class RunCvScenario(LFCliBase):
             "clean_chambers": "yes"
         }
         self.json_post("/cli-json/load", data)
-        sleep(1)
+        self.refresh()
+
         port_counter = 0;
         attempts = 6
         while (attempts > 0) and (port_counter > 0):
@@ -78,25 +82,107 @@ class RunCvScenario(LFCliBase):
             "clean_chambers": "yes"
         }
         self.json_post("/cli-json/load", data)
-        sleep(1)
+        self.refresh()
         self._pass("Loaded scenario %s" % self.lanforge_db, True)
         return True
+
+    def refresh(self):
+        events_response = self.json_get("/events/last")
+        if "event" not in events_response:
+            raise ValueError("Unable to find last event")
+        if "id" not in events_response["event"]:
+            pprint.pprint(events_response["event"])
+            raise ValueError("bad event format")
+        previous_event_id = events_response["event"]["id"]
+
+        # check for scenario (db) load message
+        begin_time: int = round(time.time() * 1000)
+        load_completed = False
+        while not load_completed:
+            if time.time() > (begin_time + self.load_timeout_sec):
+                print("Unable to load database within %d sec" % self.load_timeout_sec)
+                exit(1)
+            events_response = self.json_get("/events/since/%s" % previous_event_id)
+            if "events" not in events_response:
+                pprint.pprint(("events response", events_response))
+                raise ValueError("incorrect events response")
+            for event_o in events_response["events"]:
+                if load_completed:
+                    break
+                for (key, record) in event_o.items():
+                    if "event description" not in record:
+                        continue
+                    if not record["event description"]:
+                        continue
+                    if record["event description"].startswith("LOAD COMPLETED at "):
+                        print("load completed: %s " % record["event description"])
+                        load_completed = True
+                        break
+            if not load_completed:
+                sleep(1)
+
+        blobs_last_updated = begin_time
+        status_response = self.json_get("/")
+        if "text_records_last_updated_ms" in status_response:
+            blobs_last_updated = int(status_response["text_records_last_updated_ms"])
+            #print("*** blobs updated at %d" % blobs_last_updated)
+        else:
+            begin_time = round(time.time() * 1000)
+            print("no text_records_last_updated_ms, using %d " % begin_time)
+        # next we will want to sync our text blobs up
+        self.json_post("/cli-json/show_text_blob", {
+            "type": "ALL",
+            "name": "ALL"
+        })
+
+        load_completed = False
+        while not load_completed:
+            sleep(1)
+            if time.time() > (begin_time + (6 * 1000)):
+                print("waited %d sec for text blobs to update" % self.load_timeout_sec)
+                load_completed = True
+                break
+            status_response = self.json_get("/")
+            if "text_records_last_updated_ms" in status_response:
+                updated = int(status_response["text_records_last_updated_ms"])
+                print(", , , , , , , , , updated at %d" % updated)
+                if updated > blobs_last_updated:
+                    load_completed = True
+                    break
+            else:
+                pprint.pprint(status_response)
+            self.json_post("/cli-json/show_text_blob", {
+                "type": "ALL",
+                "name": "ALL"
+            })
+        delta: int = (time.time() * 1000) - begin_time
+        print("blobs loaded in %d ms" % delta)
+
+        # next show duts
+        self.json_post("/cli-json/show_dut", {"name": "ALL"})
+        self.json_post("/cli-json/show_profile", {"name": "ALL"})
+        self.json_post("/cli-json/show_traffic_profile", {"name": "ALL"})
+        sleep(5)
+
 
     def start(self, debug_=False):
         # /gui_cli takes commands keyed on 'cmd', so we create an array of commands
         commands = [
+            "cv sync",
+            "sleep 4",
             "cv apply '%s'" % self.cv_scenario,
+            "sleep 4",
             "cv build",
             "sleep 4",
             "cv is_built",
             "cv sync",
-            "sleep 2",
+            "sleep 4",
             "cv create '%s' 'test_ref' 'true'" % self.cv_test,
-            "sleep 2",
-            "cv load test_ref '%s'" % self.test_profile,
-            "sleep 1",
-            "cv click test_ref 'Auto Save Report'",
             "sleep 5",
+            "cv load test_ref '%s'" % self.test_profile,
+            "sleep 5",
+            "cv click test_ref 'Auto Save Report'",
+            "sleep 1",
             "cv click test_ref Start",
             "sleep 60",
             "cv get test_ref 'Report Location:'",
@@ -152,10 +238,12 @@ def main():
     lfjson_host = "localhost"
     lfjson_port = 8080
     parser = argparse.ArgumentParser(
+        prog="run_cv_scenario.py",
+        formatter_class=argparse.RawTextHelpFormatter,
         description="""LANforge Reporting Script:  Load a scenario and run a RvR report
-Example:
-./load_ap_scenario.py --lfmgr 127.0.0.1 --scenario_db 'handsets' --cv_test  --test_scenario 'test-20'
-""")
+            Example:
+            ./load_ap_scenario.py --lfmgr 127.0.0.1 --scenario_db 'handsets' --cv_test  --test_scenario 'test-20'
+            """)
     parser.add_argument("-m", "--lfmgr", type=str, help="address of the LANforge GUI machine (localhost is default)")
     parser.add_argument("-o", "--port", type=int, help="IP Port the LANforge GUI is listening on (8080 is default)")
     parser.add_argument("-d", "--lanforge_db", type=str, help="Name of test scenario database (see Status Tab)")

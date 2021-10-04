@@ -1,29 +1,31 @@
-""" ftp_test.py will verify that N clients connected on specified band and can simultaneously download/upload some amount of file from FTP server and measuring the time taken by client to download/upload the file.
-    cli- python3 ftp_test.py --mgr localhost --mgr_port 8080 --upstream_port eth1 --ssid FTP --security open --passwd BLANK --ap_name WAC505 --ap_ip 192.168.213.90 --bands Both --directions Download --twog_radio wiphy1 --fiveg_radio wiphy0 --file_size 2MB --num_stations 40 --Both_duration 1 --traffic_duration 2 --ssh_port 22_
+""" lf_ftp.py will verify that N clients connected on specified band and can simultaneously download/upload some amount of file from FTP server and measuring the time taken by client to download/upload the file.
+    cli- python3 lf_ftp.py --mgr localhost --mgr_port 8080 --upstream_port eth1 --ssid FTP --security open --passwd BLANK --ap_name WAC505 --ap_ip 192.168.213.90 --bands Both --directions Download --twog_radio wiphy1 --fiveg_radio wiphy0 --file_size 2MB --num_stations 40 --Both_duration 1 --traffic_duration 2 --ssh_port 22_
     Copyright 2021 Candela Technologies Inc
     License: Free to distribute and modify. LANforge systems must be licensed.
 """
 import sys
+import importlib
 import paramiko
-
-if sys.version_info[0] != 3:
-    print("This script requires Python 3")
-    exit(1)
-if 'py-json' not in sys.path:
-    sys.path.append('../py-json')
-
-from LANforge import LFUtils
-from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
-import realm
 import argparse
-import datetime
 from datetime import datetime
 import time
 import os
 import matplotlib.patches as mpatches
-from lf_report import *
-from lf_graph import *
+
+if sys.version_info[0] != 3:
+    print("This script requires Python 3")
+    exit(1)
+
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
+lf_report = importlib.import_module("py-scripts.lf_report")
+lf_graph = importlib.import_module("py-scripts.lf_graph")
 
 
 class FtpTest(LFCliBase):
@@ -698,7 +700,10 @@ class FtpTest(LFCliBase):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FTP Test Script")
+    parser = argparse.ArgumentParser(
+        prog='lf_ftp.py',
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="FTP Test Script")
     parser.add_argument('--mgr', help='hostname for where LANforge GUI is running', default='localhost')
     parser.add_argument('--mgr_port', help='port LANforge GUI HTTP service is running on', default=8080)
     parser.add_argument('--upstream_port', help='non-station port that generates traffic: eg: eth1', default='eth1')

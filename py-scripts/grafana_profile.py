@@ -7,19 +7,22 @@ It gets the columns of the files and from that it automatically determines the n
 """
 import sys
 import os
+import importlib
 import argparse
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-dashboard'))
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from GrafanaRequest import GrafanaRequest
-from LANforge.lfcli_base import LFCliBase
-import string
+# from GrafanaRequest import GrafanaRequest
+GrafanaRequest = importlib.import_module("py-dashboard.GrafanaRequest")
+GrafanaRequest = GrafanaRequest.GrafanaRequest
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+
 
 class UseGrafana(GrafanaRequest):
 

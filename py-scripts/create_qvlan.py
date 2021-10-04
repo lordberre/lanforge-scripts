@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-
 import sys
 import os
+import importlib
+import argparse
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-import argparse
-from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
-from LANforge.add_file_endp import *
-from LANforge import LFUtils
-import argparse
-from realm import Realm
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+add_file_endp = importlib.import_module("py-json.LANforge.add_file_endp")
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
 
 
 class CreateQVlan(Realm):
@@ -114,7 +114,7 @@ def main():
                     and args.qvlan_parent in args.first_port:
                 start_num = int(args.first_port[args.first_port.index('#') + 1:])
                 num_ports = int(args.num_ports)
-                port_list = LFUtils.port_name_series(prefix=args.qvlan_parent + "#", start_id=start_num,
+                port_list = LFUtils.port_name_series(prefix=str(args.qvlan_parent) + "#", start_id=start_num,
                                                      end_id=start_num + num_ports - 1, padding_number=10000,
                                                      radio=args.radio)
                 print(2)
@@ -125,7 +125,7 @@ def main():
     else:
         if args.use_ports is None:
             num_ports = int(args.num_ports)
-            port_list = LFUtils.port_name_series(prefix=args.qvlan_parent + "#", start_id=1,
+            port_list = LFUtils.port_name_series(prefix=str(args.qvlan_parent) + "#", start_id=1,
                                                  end_id=num_ports, padding_number=10000,
                                                  radio=args.radio)
             print(3)

@@ -1,30 +1,31 @@
 #!/usr/bin/env python3
-
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Class holds default settings for json requests to Ghost     -
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-import os
 import sys
-
-if sys.version_info[0] != 3:
-    print("This script requires Python 3")
-    exit()
-
+import os
+import importlib
 import requests
-
 import jwt
 from datetime import datetime
 import json
 import subprocess
 from scp import SCPClient
 import paramiko
-from GrafanaRequest import GrafanaRequest
-from influx2 import RecordInflux
 import time
 from collections import Counter
 import shutil
 import itertools
+
+if sys.version_info[0] != 3:
+    print("This script requires Python 3")
+    exit()
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+GrafanaRequest = importlib.import_module("py-dashboard.GrafanaRequest")
+InfluxRequest = importlib.import_module("py-dashboard.InfluxRequest")
+RecordInflux = InfluxRequest.RecordInflux
 
 
 class CSVReader:
@@ -206,10 +207,10 @@ class GhostRequest:
                     authors,
                     title='custom'):
         self.upload_images(folder)
-        head = '''<p>This is a custom post created via a script</p>'''
+        head = '''This is a custom post created via a script'''
         for picture in self.images:
             head = head + '<img src="%s"></img>' % picture
-        head = head + '''<p>This is the end of the example</p>'''
+        head = head + '''This is the end of the example'''
         self.create_post(title=title,
                          text=head)
 
@@ -439,57 +440,70 @@ class GhostRequest:
         # create Grafana Dashboard
         target_files = []
         for folder in target_folders:
-            target_files.append(folder.split('/')[-1] + '/kpi.csv')
+            target_file=folder.split('/')[-1] + '/kpi.csv'
+            try:
+                open(target_file)
+                target_files.append(target_file)
+            except:
+                pass
         if self.debug:
             print('Target files: %s' % target_files)
 
+        text = 'Testbed: %s<br />' % testbeds[0]
         if self.influx_token is not None:
             influxdb = RecordInflux(_influx_host=self.influx_host,
                                     _influx_port=self.influx_port,
                                     _influx_org=self.influx_org,
                                     _influx_token=self.influx_token,
                                     _influx_bucket=self.influx_bucket)
-            short_description = 'Tests passed'  # variable name
-            numeric_score = test_pass_fail_results['PASS']  # value
-            tags = dict()
-            if self.debug:
-                print(datetime.utcfromtimestamp(max(times)))
-            tags['testbed'] = testbeds[0]
-            tags['script'] = 'GhostRequest'
-            tags['Graph-Group'] = 'PASS'
-            date = datetime.utcfromtimestamp(max(times)).isoformat()
-            influxdb.post_to_influx(short_description, numeric_score, tags, date)
+            try:
+                short_description = 'Tests passed'  # variable name
+                numeric_score = test_pass_fail_results['PASS']  # value
+                tags = dict()
+                if self.debug:
+                    print(datetime.utcfromtimestamp(max(times)))
+                tags['testbed'] = testbeds[0]
+                tags['script'] = 'GhostRequest'
+                tags['Graph-Group'] = 'PASS'
+                date = datetime.utcfromtimestamp(max(times)).isoformat()
+                influxdb.post_to_influx(short_description, numeric_score, tags, date)
 
-            short_description = 'Tests failed'  # variable name
-            numeric_score = test_pass_fail_results['FAIL']  # value
-            tags = dict()
-            tags['testbed'] = testbeds[0]
-            tags['script'] = 'GhostRequest'
-            tags['Graph-Group'] = 'FAIL'
-            date = datetime.utcfromtimestamp(max(times)).isoformat()
-            influxdb.post_to_influx(short_description, numeric_score, tags, date)
+                short_description = 'Tests failed'  # variable name
+                numeric_score = test_pass_fail_results['FAIL']  # value
+                tags = dict()
+                tags['testbed'] = testbeds[0]
+                tags['script'] = 'GhostRequest'
+                tags['Graph-Group'] = 'FAIL'
+                date = datetime.utcfromtimestamp(max(times)).isoformat()
+                influxdb.post_to_influx(short_description, numeric_score, tags, date)
 
-            short_description = 'Subtests passed'  # variable name
-            numeric_score = subtest_pass_fail_results['PASS']  # value
-            tags = dict()
-            if self.debug:
-                print(datetime.utcfromtimestamp(max(times)))
-            tags['testbed'] = testbeds[0]
-            tags['script'] = 'GhostRequest'
-            tags['Graph-Group'] = 'Subtest PASS'
-            date = datetime.utcfromtimestamp(max(times)).isoformat()
-            influxdb.post_to_influx(short_description, numeric_score, tags, date)
+                short_description = 'Subtests passed'  # variable name
+                numeric_score = subtest_pass_fail_results['PASS']  # value
+                tags = dict()
+                if self.debug:
+                    print(datetime.utcfromtimestamp(max(times)))
+                tags['testbed'] = testbeds[0]
+                tags['script'] = 'GhostRequest'
+                tags['Graph-Group'] = 'Subtest PASS'
+                date = datetime.utcfromtimestamp(max(times)).isoformat()
+                influxdb.post_to_influx(short_description, numeric_score, tags, date)
 
-            short_description = 'Subtests failed'  # variable name
-            numeric_score = subtest_pass_fail_results['FAIL']  # value
-            tags = dict()
-            tags['testbed'] = testbeds[0]
-            tags['script'] = 'GhostRequest'
-            tags['Graph-Group'] = 'Subtest FAIL'
-            date = datetime.utcfromtimestamp(max(times)).isoformat()
-            influxdb.post_to_influx(short_description, numeric_score, tags, date)
+                short_description = 'Subtests failed'  # variable name
+                numeric_score = subtest_pass_fail_results['FAIL']  # value
+                tags = dict()
+                tags['testbed'] = testbeds[0]
+                tags['script'] = 'GhostRequest'
+                tags['Graph-Group'] = 'Subtest FAIL'
+                date = datetime.utcfromtimestamp(max(times)).isoformat()
+                influxdb.post_to_influx(short_description, numeric_score, tags, date)
+            except Exception as err:
+                influx_error = err
+                text += '''InfluxDB Error: %s<br />
+                Influx Host: %s<br />
+                Influx Port: %s<br />
+                Influx Organization: %s<br />
+                Influx Bucket: %s<br />''' % (influx_error, self.influx_host, self.influx_port, self.influx_org, self.influx_bucket)
 
-        text = 'Testbed: %s<br />' % testbeds[0]
         raw_test_tags = list()
         test_tag_table = ''
         for tag in test_tag.values():
@@ -526,11 +540,10 @@ class GhostRequest:
                     '<tr><td style="border-color: gray; border-style: solid; border-width: 1px; ">Subtests passed</td>' \
                     '<td colspan="3" style="border-color: gray; border-style: solid; border-width: 1px; ">%s</td></tr>' \
                     '<tr><td style="border-color: gray; border-style: solid; border-width: 1px; ">Subtests failed</td>' \
-                    '<td colspan="3" style="border-color: gray; border-style: solid; border-width: 1px; ">%s</td></tr>' % (
+                    '<td colspan="3" style="border-color: gray; border-style: solid; border-width: 1px; ">%s</td></tr>' \
+                    '</tbody></table>' % (
                         dut_table_columns, test_tag_table, test_pass_fail_results['PASS'],
                         test_pass_fail_results['FAIL'], subtest_pass_total, subtest_fail_total)
-
-        dut_table = dut_table + '</tbody></table>'
         text = text + dut_table
 
         for dictionary in web_pages_and_pdfs:
@@ -555,23 +568,31 @@ class GhostRequest:
                                      )
             if self.debug:
                 print('Test Tag: %s' % test_tag)
-            grafana.create_custom_dashboard(target_csvs=target_files,
-                                            title=title,
-                                            datasource=grafana_datasource,
-                                            bucket=grafana_bucket,
-                                            from_date=start_time,
-                                            to_date=end_time.strftime('%Y-%m-%d %H:%M:%S'),
-                                            pass_fail='GhostRequest',
-                                            testbed=testbeds[0],
-                                            test_tag=test_tag)
-            # get the details of the dashboard through the API, and set the end date to the youngest KPI
-            grafana.list_dashboards()
+            try:
+                grafana.create_custom_dashboard(target_csvs=target_files,
+                                                title=title,
+                                                datasource=grafana_datasource,
+                                                bucket=grafana_bucket,
+                                                from_date=start_time,
+                                                to_date=end_time.strftime('%Y-%m-%d %H:%M:%S'),
+                                                pass_fail='GhostRequest',
+                                                testbed=testbeds[0],
+                                                test_tag=test_tag)
+                # get the details of the dashboard through the API, and set the end date to the youngest KPI
+                grafana.list_dashboards()
 
-            grafana.create_snapshot(title='Testbed: ' + title)
-            time.sleep(3)
-            snapshot = grafana.list_snapshots()[-1]
-            text = text + '<iframe src="http://%s:3000/dashboard/snapshot/%s" width="100%s" height=1500></iframe><br />' % (
-                grafana_host, snapshot['key'], '%')
+                grafana.create_snapshot(title='Testbed: ' + title)
+                time.sleep(3)
+                snapshot = grafana.list_snapshots()[-1]
+                text = text + '<iframe src="http://%s:3000/dashboard/snapshot/%s" width="100%s" height=1500></iframe><br />' % (
+                    grafana_host, snapshot['key'], '%')
+            except Exception as err:
+                grafana_error = err
+                text = text + '''Grafana Error: %s<br />
+                Grafana credentials:<br />
+                Grafana Host: %s<br />
+                Grafana Bucket: %s<br />
+                Grafana Database: %s<br />''' % (grafana_error, grafana_host, grafana_bucket, grafana_datasource)
 
         text = text + 'Low priority results: %s' % csvreader.to_html(low_priority)
 

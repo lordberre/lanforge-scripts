@@ -17,19 +17,43 @@ COPYWRITE
 
 INCLUDE_IN_README
 '''
-
+import sys
+import os
+import importlib
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import pdfkit
-from lf_report import lf_report
-from lf_graph import lf_bar_graph, lf_scatter_graph, lf_stacked_graph, lf_horizontal_stacked_graph
 import random
+import argparse
+
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lf_report = importlib.import_module("py-scripts.lf_report")
+lf_report = lf_report.lf_report
+lf_graph = importlib.import_module("py-scripts.lf_graph")
+lf_bar_graph = lf_graph.lf_bar_graph
+lf_scatter_graph = lf_graph.lf_scatter_graph
+lf_stacked_graph = lf_graph.lf_stacked_graph
+lf_horizontal_stacked_graph = lf_graph.lf_horizontal_stacked_graph
+
 
 # Unit Test
 if __name__ == "__main__":
     # Testing: generate data frame
+
+    parser = argparse.ArgumentParser(
+        prog="lf_report_test.py",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="Tests reporting library")
+    parser.add_argument('--lfmgr', help='sample argument: where LANforge GUI is running', default='localhost')    
+    # the args parser is not really used , this is so the report is not generated when testing 
+    # the imports with --help
+    args = parser.parse_args()
+    print("LANforge manager {lfmgr}".format(lfmgr=args.lfmgr))
+
     dataframe = pd.DataFrame({
         'product': ['CT521a-264-1ac-1n', 'CT521a-1ac-1ax', 'CT522-264-1ac2-1n', 'CT523c-2ac2-db-10g-cu',
                     'CT523c-3ac2-db-10g-cu', 'CT523c-8ax-ac10g-cu', 'CT523c-192-2ac2-1ac-10g'],
@@ -107,7 +131,8 @@ if __name__ == "__main__":
                          _legend_loc="best",
                          _legend_box=(1,1),
                          _legend_ncol=1,
-                         _legend_fontsize=None)
+                         _legend_fontsize=None,
+                         _enable_csv=True)
 
     graph_png = graph.build_bar_graph()
 
@@ -116,7 +141,9 @@ if __name__ == "__main__":
     report.set_graph_image(graph_png)
     # need to move the graph image to the results 
     report.move_graph_image()
-
+    if graph.enable_csv:
+        report.set_csv_filename(graph_png)
+        report.move_csv_file()
     report.build_graph()
     set1 = [1, 2, 3, 4]
     set2 = [[45, 67, 45, 34], [34, 56, 45, 34], [45, 78, 23, 45]]

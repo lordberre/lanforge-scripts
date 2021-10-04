@@ -162,23 +162,24 @@ reset_duration_max: 60000
 bandsteer_always_5g: 0
 
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
-import json
-from os import path
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_test_manager import cv_test as cvtest
-from cv_test_manager import *
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cvtest = cv_test_manager.cv_test
+cv_add_base_parser = cv_test_manager.cv_add_base_parser
+cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
+
 
 class ApAutoTest(cvtest):
     def __init__(self,
@@ -186,6 +187,7 @@ class ApAutoTest(cvtest):
                  lf_port=8080,
                  lf_user="lanforge",
                  lf_password="lanforge",
+                 ssh_port=22,
                  local_lf_report_dir="",
                  instance_name="ap_auto_instance",
                  config_name="ap_auto_config",
@@ -230,6 +232,7 @@ class ApAutoTest(cvtest):
         self.raw_lines = raw_lines
         self.raw_lines_file = raw_lines_file
         self.sets = sets
+        self.ssh_port = ssh_port
         self.graph_groups = graph_groups
         self.local_lf_report_dir = local_lf_report_dir
 
@@ -284,33 +287,37 @@ class ApAutoTest(cvtest):
         self.create_and_run_test(self.load_old_cfg, self.test_name, self.instance_name,
                                  self.config_name, self.sets,
                                  self.pull_report, self.lf_host, self.lf_user, self.lf_password,
-                                 cv_cmds, graph_groups_file=self.graph_groups, local_lf_report_dir=self.local_lf_report_dir)
+                                 cv_cmds, ssh_port=self.ssh_port, local_lf_report_dir=self.local_lf_report_dir,
+                                 graph_groups_file=self.graph_groups)
 
         self.rm_text_blob(self.config_name, blob_test)  # To delete old config with same name
 
 
 def main():
 
-    parser = argparse.ArgumentParser("""
+    parser = argparse.ArgumentParser(
+        prog="lf_ap_auto_test.py",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="""
     Open this file in an editor and read the top notes for more details.
     
     Example:
-    ./lf_ap_auto_test.py --mgr localhost --port 8080 --lf_user lanforge --lf_password lanforge \
-      --instance_name ap-auto-instance --config_name test_con --upstream 1.1.eth2 \
-      --dut5_0 'linksys-8450 Default-SSID-5gl c4:41:1e:f5:3f:25 (2)' \
-      --dut2_0 'linksys-8450 Default-SSID-2g c4:41:1e:f5:3f:24 (1)' \
-      --max_stations_2 100 --max_stations_5 100 --max_stations_dual 200 \
-      --radio2 1.1.wiphy0 --radio2 1.1.wiphy2 \
-      --radio5 1.1.wiphy1 --radio5 1.1.wiphy3 --radio5 1.1.wiphy4 \
-      --radio5 1.1.wiphy5 --radio5 1.1.wiphy6 --radio5 1.1.wiphy7 \
-      --set 'Basic Client Connectivity' 1 --set 'Multi Band Performance' 1 \
-      --set 'Skip 2.4Ghz Tests' 1 --set 'Skip 5Ghz Tests' 1 \
-      --set 'Throughput vs Pkt Size' 0 --set 'Capacity' 0 --set 'Stability' 0 --set 'Band-Steering' 0 \
-      --set 'Multi-Station Throughput vs Pkt Size' 0 --set 'Long-Term' 0 \
-      --test_rig Testbed-01 --pull_report \
-      --influx_host c7-graphana --influx_port 8086 --influx_org Candela \
-      --influx_token=-u_Wd-L8o992701QF0c5UmqEp7w7Z7YOMaWLxOMgmHfATJGnQbbmYyNxHBR9PgD6taM_tcxqJl6U8DjU1xINFQ== \
-      --influx_bucket ben \
+    ./lf_ap_auto_test.py --mgr localhost --port 8080 --lf_user lanforge --lf_password lanforge \\
+      --instance_name ap-auto-instance --config_name test_con --upstream 1.1.eth2 \\
+      --dut5_0 'linksys-8450 Default-SSID-5gl c4:41:1e:f5:3f:25 (2)' \\
+      --dut2_0 'linksys-8450 Default-SSID-2g c4:41:1e:f5:3f:24 (1)' \\
+      --max_stations_2 100 --max_stations_5 100 --max_stations_dual 200 \\
+      --radio2 1.1.wiphy0 --radio2 1.1.wiphy2 \\
+      --radio5 1.1.wiphy1 --radio5 1.1.wiphy3 --radio5 1.1.wiphy4 \\
+      --radio5 1.1.wiphy5 --radio5 1.1.wiphy6 --radio5 1.1.wiphy7 \\
+      --set 'Basic Client Connectivity' 1 --set 'Multi Band Performance' 1 \\
+      --set 'Skip 2.4Ghz Tests' 1 --set 'Skip 5Ghz Tests' 1 \\
+      --set 'Throughput vs Pkt Size' 0 --set 'Capacity' 0 --set 'Stability' 0 --set 'Band-Steering' 0 \\
+      --set 'Multi-Station Throughput vs Pkt Size' 0 --set 'Long-Term' 0 \\
+      --test_rig Testbed-01 --test_tag ATH10K --pull_report \\
+      --influx_host c7-graphana --influx_port 8086 --influx_org Candela \\
+      --influx_token=-u_Wd-L8o992701QF0c5UmqEp7w7Z7YOMaWLxOMgmHfATJGnQbbmYyNxHBR9PgD6taM_tcxqJl6U8DjU1xINFQ== \\
+      --influx_bucket ben \\
       --influx_tag testbed Ferndale-01
       """
                                      )

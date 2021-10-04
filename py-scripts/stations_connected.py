@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-
 # Contains examples of using realm to query stations and get specific information from them
-
 import sys
+import os
+import importlib
+import argparse
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append('../py-json')
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from LANforge.lfcli_base import LFCliBase
-from realm import Realm
-import pprint
-from pprint import pprint
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
+
 
 class StationsConnected(LFCliBase):
     def __init__(self, lfjson_host, lfjson_port):
-        super().__init__(_lfjson_host=lfjson_host, _lfjson_port=lfjson_port, _debug=False)
-        self.localrealm = Realm(lfclient_host=lfjson_host, lfclient_port=lfjson_port, debug=False)
+        super().__init__(_lfjson_host=lfjson_host, _lfjson_port=lfjson_port)
+        self.localrealm = Realm(lfclient_host=lfjson_host, lfclient_port=lfjson_port)
         self.check_connect()
 
     def run(self):
@@ -45,6 +47,20 @@ class StationsConnected(LFCliBase):
         return counter
 
 def main():
+    parser = argparse.ArgumentParser(
+        prog='stations_connected.py',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog='''\
+        stations_connected.py
+
+            ''',
+        description='''\
+Contains examples of using realm to query stations and get specific information from them
+        ''')
+    # if args are added  args=parser.parse_args() swap out next line
+    parser.parse_args()
+
+
     qstationsx = StationsConnected("localhost", 8080)
     bssid = "00:0E:8E:7B:DF:9B"
     if qstationsx.run():
