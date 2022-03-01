@@ -84,7 +84,7 @@ class MULTICASTProfile(LFCliBase):
         for endp_name in self.get_mc_names():
             self.local_realm.rm_endp(endp_name, debug_=debug_, suppress_related_commands_=suppress_related_commands)
 
-    def create_mc_tx(self, endp_type, side_tx, mcast_group="224.9.9.9", mcast_dest_port=9999,
+    def create_mc_tx(self, endp_type, side_tx, mcast_group="224.9.9.9", mcast_dest_port=9999,min_rate=256000,max_rate=0,
                      suppress_related_commands=None, debug_=False):
         if self.debug:
             debug_ = True
@@ -103,9 +103,9 @@ class MULTICASTProfile(LFCliBase):
             'port': side_tx_port,
             'type': endp_type,
             'ip_port': -1,
-            'is_rate_bursty':
-                'NO', 'min_rate': 256000,
-            'max_rate': 0,
+            'is_rate_bursty':'NO',
+            'min_rate': min_rate,
+            'max_rate': max_rate,
             'is_pkt_sz_random': 'NO',
             'min_pkt': 1472,
             'max_pkt': 0,
