@@ -25,6 +25,12 @@ lf_rpt = cv_test_reports.lanforge_reports
 
 import pyshark as ps
 
+'''
+Usage: python3 lf_power_save_test_cases_cisco.py --mgr 192.168.200.229 --ssid Endurance1 --radio wiphy0 
+       --upstream_port 1.1.eth1 --monitor_radio wiphy0 
+       --report_path /home/mahesh/Desktop/lanforge-scripts/lanforge-scripts/py-scripts
+'''
+
 
 class MulticastandUnicastPowersaveTraffic(Realm):
 
@@ -33,7 +39,7 @@ class MulticastandUnicastPowersaveTraffic(Realm):
                  side_a_unicast_min_rate=56, side_b_unicast_min_rate=56, side_a_unicast_max_rate=0,
                  side_b_unicast_max_rate=0, pdu_size=1000,
                  upstream="1.1.eth1", interface_to_capture=None,
-                 prefix="00000", test_duration="5m",report_path="",
+                 prefix="00000", test_duration="5m", report_path="",
                  station_radio="wiphy0", monitor_radio="wiphy0", remote_host_cap_ip=None,
                  output_file_for_cap="",
                  remote_host_cap_interface=None,
@@ -169,7 +175,7 @@ class MulticastandUnicastPowersaveTraffic(Realm):
         for station in self.station_profile.station_names:
             temp.append(self.name_to_eid(station)[2])
         port_info = self.json_get("port/1/1/%s?fields=alias,ap,mac" % ','.join(temp))
-        print("port_info.........",port_info)
+        print("port_info.........", port_info)
         if port_info is not None:
             if 'interfaces' in port_info:
                 for item in port_info['interfaces']:
@@ -183,7 +189,7 @@ class MulticastandUnicastPowersaveTraffic(Realm):
                 print("ap       %s\n" % port_info['interface']['ap'])
                 self.filter = "wlan.addr==" + port_info['interface']['mac'] + " || " + "wlan.addr==" + \
                               port_info['interface']['ap']
-                print("self.filter=", self.filter)
+                print("filter=", self.filter)
             else:
                 print('interfaces and interface not in port_mgr_response')
                 exit(1)
@@ -248,7 +254,7 @@ class MulticastandUnicastPowersaveTraffic(Realm):
                 mcast_frame_num = str(pkt.number)
                 frame_type = pkt[
                     'wlan'].DATA_LAYER  # here i'm verifying the type of frame to identify multicast packet right after beacon.
-                print(f"Multi cast frame number right after beacon : {mcast_frame_num}")
+                print(f"Expected Multi cast frame number right after beacon : {mcast_frame_num}")
                 time_delta_from_prev_frame_in_microsec = str(pkt.frame_info.time_delta)
                 time_delta_from_prev_frame_in_millisec = round(float(time_delta_from_prev_frame_in_microsec) * 1000)
                 print("time_delta_from_prev_frame_in_microsec :", time_delta_from_prev_frame_in_microsec)
@@ -381,6 +387,20 @@ Example of creating traffic on an l3 connection
                         default="wiphy1")
     parser.add_argument('--report_path', help="desired path to save your pcap file fetched from lanforge through ssh",
                         default="/home/mahesh/Desktop/lanforge-scripts/lanforge-scripts/py-scripts")
+    parser.add_argument('--mcast_min_rate', help="value for multicast minimum rate in kbps", type=int, default=9000)
+    parser.add_argument('--mcast_max_rate', help="value for multicast maximum rate in kbps", type=int, default=128000)
+
+    parser.add_argument('--side_a_unicast_min_rate', help="value for multicast maximum rate in kbps", type=int,
+                        default=9000)
+    parser.add_argument('--side_b_unicast_min_rate', help="value for multicast maximum rate in kbps", type=int,
+                        default=9000)
+    parser.add_argument('--side_a_unicast_max_rate', help="value for multicast maximum rate in kbps", type=int,
+                        default=128000)
+    parser.add_argument('--side_b_unicast_max_rate', help="value for multicast maximum rate in kbps", type=int,
+                        default=128000)
+
+    parser.add_argument('--pdu_size', help="pdu size in bytes", type=int, default=1400)
+
     args = parser.parse_args()
 
     lfjson_host = args.mgr
@@ -389,11 +409,13 @@ Example of creating traffic on an l3 connection
     ip_powersave_test = MulticastandUnicastPowersaveTraffic(lfjson_host, lfjson_port, ssid=args.ssid,
                                                             security=args.security,
                                                             password=args.passwd, station_list=station_list,
-                                                            min_rate_multi_cast=9000,
-                                                            max_rate_multi_cast=128000, side_a_unicast_min_rate=9000,
-                                                            side_b_unicast_min_rate=9000,
-                                                            side_a_unicast_max_rate=128000,
-                                                            side_b_unicast_max_rate=128000, pdu_size=1400,
+                                                            min_rate_multi_cast=args.mcast_min_rate,
+                                                            max_rate_multi_cast=args.mcast_max_rate,
+                                                            side_a_unicast_min_rate=args.side_a_unicast_min_rate,
+                                                            side_b_unicast_min_rate=args.side_b_unicast_min_rate,
+                                                            side_a_unicast_max_rate=args.side_a_unicast_max_rate,
+                                                            side_b_unicast_max_rate=args.side_b_unicast_max_rate,
+                                                            pdu_size=args.pdu_size,
                                                             station_radio=args.radio,
                                                             upstream=args.upstream_port,
                                                             monitor_radio=args.monitor_radio, test_duration="1m",
@@ -417,8 +439,6 @@ Example of creating traffic on an l3 connection
 
     # below function can be run solely without calling above functions to disect multicast packets \
     # if we have ready packet captured file to test dtim_multicast
-    # ip_powersave_test.verify_dtim_multicast_pcap("/home/mahesh/Documents/bad-bcast-powersave.pcapng",
-    #                                             apply_filter="wlan.addr== 68:7d:b4:5f:5c:3e || wlan.addr==04:f0:21:64:bb:69")
 
     # ip_powersave_test.verify_dtim_multicast_pcap("/home/mahesh/Documents/moni0-2022-02-17-170018.pcap",
     #                                              apply_filter="wlan.addr==04:f0:21:94:1e:4d || wlan.addr==3C:37:86:13:81:60")
