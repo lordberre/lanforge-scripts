@@ -76,6 +76,8 @@ class WiFiProblemsTest(Realm):
         self.stations_with_services, self.stations_with_desired_services = [], []
         self.desired_cx = []
         self.all_wifi_stations = []
+        self.uplink_port = "1.1.01"  # Normally eth1 in MobileStations
+        self.excluded_stations = []  # Endpoints to exclude from disconnects/connects
 
     # Return dict with key(port) -> port data for all ports
     def get_ports(self):
@@ -102,6 +104,12 @@ class WiFiProblemsTest(Realm):
                 endpoint = self.json_get('/endp/' + alias)
                 endpoint_map[port] = endpoint
         return endpoint_map
+
+    def flip_uplink(self):
+        print('Flipping uplink port: {} ..'.format(self.uplink_port))
+        self.local_realm.admin_down(self.uplink_port)
+        sleep(1)
+        self.local_realm.admin_up(self.uplink_port)
     
     def disconnect_stations(self, ports=[]):
         self.refresh_configured_endpoints()
@@ -158,6 +166,8 @@ class WiFiProblemsTest(Realm):
                             print('Storing {}({}) because it should be running {}'.format(port, data['interface']['device'], data['interface']['l3_endpoint']['name']))
                             active_stations.append(port)
                             active_cx.append(cx)
+                    else if 'hogger' in cx.lower():
+                        self.excluded_stations.append(port)
 
                         stations.append(port)
         self.stations_with_services = stations
@@ -292,6 +302,7 @@ class WiFiProblemsTest(Realm):
             print('Finished configuring attenuators!')
         else:
             sleep(30)  # Need to wait more anyway
+        self.flip_uplink()
         
         self.populate_all_tables()
         print('Configured services: {}.'.format(self.desired_services))
@@ -335,6 +346,7 @@ class CreateAttenuator(Realm):
         self.attenuator_profile.atten_serno = serno
         self.attenuator_profile.atten_idx = idx
         self.attenuator_profile.atten_val = val
+        self._apply()
     
     def _apply(self):
         self._build()
@@ -348,20 +360,16 @@ class CreateAttenuator(Realm):
     
     def base_profile(self):
         self.attenuator_profile = self.new_attenuator_profile()
-        self._configure('3066', 'all', 0)
-        self._apply()
-        self._configure('3067', 'all', 0)  # Client running service (Node1)
-        self._apply()
-        self._configure('3068', 'all', 0)
-        self._apply()
-        self._configure('3070', 'all', 955)  # Throttlers chamber (Node2)
-        self._apply()
-        self._configure('3073', 'all', 955)  # Conducted Node1
-        self._apply()
-        self._configure('3076', 'all', 955)  # Conductect Node2
-        self._apply()
-        self._configure('3084', 'all', 0)
-        self._apply()
+        self._configure('3066', 'all', 955)
+        self._configure('3067', 'all', 955)      # Throttlers chamber (Node2) (Air)
+        self._configure('3068', 'all', 955)
+        self._configure('3070', 'all', 0)        # Client running service (Node1)
+        self._configure('3073', 0, 0)            # Conducted Node2 - Needs to be open for throttlers
+        self._configure('3073', 1, 0)            # Conducted Node2 - Needs to be open for throttlers
+        self._configure('3073', 2, 955)          # Conducted Node1 - Needs to be completely attenuated
+        self._configure('3073', 3, 955)          # Conducted Node1 - Needs to be completely attenuated
+        self._configure('3076', 'all', 955)
+        self._configure('3084', 'all', 955)
 
     def disabled_attenuation_profile(self):
         self._configure('3067', 'all', 0)
