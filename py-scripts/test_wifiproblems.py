@@ -14,9 +14,21 @@ import importlib
 import argparse
 import logging
 import time
-import csv
+import json
 from time import sleep
 from pprint import pprint
+from datetime import datetime
+
+# For GNURadio flow
+from gnuradio import analog
+from gnuradio import gr
+from gnuradio.filter import firdes
+import signal
+from argparse import ArgumentParser
+from gnuradio.eng_arg import eng_float, intx
+from gnuradio import eng_notation
+import limesdr
+
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
@@ -60,7 +72,7 @@ class WiFiProblemsTest(Realm):
                  port=8008,
                  _debug_on=False,
                  _exit_on_error=False,
-                 _exit_on_fail=False, attenuator=None):
+                 _exit_on_fail=False, attenuator=None, noise_generator=None):
         super().__init__(lfclient_host=host,
                          lfclient_port=port,
                          debug_=_debug_on),
@@ -70,6 +82,7 @@ class WiFiProblemsTest(Realm):
         self.debug = _debug_on
         self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
         self.attenuator = attenuator
+        self.noise_generator = noise_generator  # gnuradio_op_block_cls
         self.desired_services = []
         self.stations_with_endpoints = dict()
         self.configured_endpoints, self.configured_cx = [], []
@@ -78,6 +91,11 @@ class WiFiProblemsTest(Realm):
         self.all_wifi_stations = []
         self.uplink_port = "1.1.01"  # Normally eth1 in MobileStations
         self.excluded_stations = []  # Endpoints to exclude from disconnects/connects
+        self.excluded_cx = ['hogger']
+
+        # Config
+        self.seconds_per_atten_step = 30  # If no noise generator is present
+        self.seconds_per_noise_step = 60
 
     # Return dict with key(port) -> port data for all ports
     def get_ports(self):
@@ -105,6 +123,9 @@ class WiFiProblemsTest(Realm):
                 endpoint_map[port] = endpoint
         return endpoint_map
 
+    def get_clients_and_cx_for_service(self, service):
+        return self.stations_with_desired_services, [x for x in self.configured_cx if service.lower() in x.lower()]
+
     def flip_uplink(self):
         print('Flipping uplink port: {} ..'.format(self.uplink_port))
         self.local_realm.admin_down(self.uplink_port)
@@ -131,23 +152,47 @@ class WiFiProblemsTest(Realm):
                 print('Taking station {}({}) with L3-endpoint: {} up...'.format(port, interface['alias'], interface['l3_endpoint']['name']))
                 self.local_realm.admin_up(port)
 
-    def start_endpoints(self):
-        print("Starting these services: {}".format(self.desired_cx))
-        for cx in self.desired_cx:
+    def start_endpoints(self, cx=None):
+        if cx is None:
+            cxs = self.desired_cx
+        else:
+            cxs = cx
+        print("Starting these services: {}".format(cxs))
+        for x in cxs:
             self.json_post("/cli-json/set_cx_state", {
                     "test_mgr": "default_tm",
-                    "cx_name": cx,
+                    "cx_name": x,
                     "cx_state": "RUNNING"
                 }, debug_=self.debug)
 
-    def stop_endpoints(self):
-        print("Stopping these services: {}".format(self.desired_cx))
-        for cx in self.desired_cx:
+    def stop_endpoints(self, cx=None):
+        if cx is None:
+            cxs = self.desired_cx
+        else:
+            cxs = cx 
+        print("Stopping these services: {}".format(cxs))
+        for x in cxs:
             self.json_post("/cli-json/set_cx_state", {
                     "test_mgr": "default_tm",
-                    "cx_name": cx,
+                    "cx_name": x,
                     "cx_state": "STOPPED"
                 }, debug_=self.debug)
+    
+    def start_test_for_service(self, service):
+        self.stop_endpoints(self.configured_cx)
+        self.disconnect_stations(self.all_wifi_stations)
+        service_clients, service_cx = self.get_clients_and_cx_for_service(service)
+        if len(service_clients) == 0 or len(service_cx) == 0:
+            logger.error("Missing client or CX for this service: {}. Data: {}, {}".format(service, service_clients, service_cx))
+            raise(ValueError)
+        self.connect_stations(service_clients)
+        self.start_endpoints(service_cx)
+        self.start_environment_traffic()
+
+    def start_environment_traffic(self):
+        print('[start_environment_traffic] Starting environment stations/traffic..')
+        self.connect_stations(self.excluded_stations)
+        self.start_endpoints(['hogger-stream-1', 'hogger-stream-2'])
 
     # Get a list of all stations running the provided "services"
     def get_stations_with_services(self, services=dict(), update_db=False):
@@ -166,7 +211,7 @@ class WiFiProblemsTest(Realm):
                             print('Storing {}({}) because it should be running {}'.format(port, data['interface']['device'], data['interface']['l3_endpoint']['name']))
                             active_stations.append(port)
                             active_cx.append(cx)
-                    else if 'hogger' in cx.lower():
+                    elif 'hogger' in cx.lower():
                         self.excluded_stations.append(port)
 
                         stations.append(port)
@@ -201,7 +246,7 @@ class WiFiProblemsTest(Realm):
             if port in endpoints:
                 self.stations_with_endpoints[port] = data
                 self.stations_with_endpoints[port]['interface']['l3_endpoint'] = endpoints[port]['endpoint']
-            if data['interface']['port type'] == 'WIFI-STA':
+            if data['interface']['port type'] == 'WIFI-STA': # and data['interface']['alias'] not in self.excluded_stations:
                 self.all_wifi_stations.append(port)
 
     
@@ -223,20 +268,9 @@ class WiFiProblemsTest(Realm):
         print("Done!")
         
     def stop(self):
-        pass
-        
-
-    def read_attenuators(self):
-        telnet = pexpect.spawn('telnet %s %s'%(host, clisock))
-        if telnet is None:
-            print ("Unable to telnet to %s:%s"%(host,clisock))
-            exit(1)
-        # (...)
-        # telnet.expect('#')
-        # telnet.sendline("show attenuators all"")
-        # telnet.expect('OK')
-        
-
+        if self.noise_generator is not None:
+            self.noise_generator.stop()
+            self.noise_generator.wait()
 
     def cleanup(self):
         self.cx_profile.cleanup()
@@ -293,9 +327,7 @@ class WiFiProblemsTest(Realm):
         # Load database and fetch the client and endpoints
         self.start(SERVICE_TYPES)
 
-        # Test
-        # self.disconnect_stations(self.stations_with_desired_services)
-        # self.stop_endpoints()
+        # Set up attenuators
         if self.attenuator is not None:
             print('Configuring attenuators.......')
             self.attenuator.base_profile()
@@ -308,6 +340,65 @@ class WiFiProblemsTest(Realm):
         print('Configured services: {}.'.format(self.desired_services))
         print('Configured stations matching these services: {}.'.format(self.stations_with_desired_services))
         print('Configured cross endpoints matching these services and stations: {}.'.format(self.desired_cx))
+
+        # Load noise generator
+        if self.noise_generator is not None:
+            tb = self.noise_generator
+            def gnuradio_tb_sig_handler(sig=None, frame=None):
+                tb.stop()
+                tb.wait()
+
+                sys.exit(0)
+
+            signal.signal(signal.SIGINT, gnuradio_tb_sig_handler)
+            signal.signal(signal.SIGTERM, gnuradio_tb_sig_handler)
+            try:
+                tb.start()
+            except Exception as e:
+                raise(e)
+            else:
+                print('Successfully loaded NoiseGenerator')
+
+        #### Start the test
+        test_duration_sec = 86400
+        error_count, iteration = 0, 0
+        start = time.time()
+
+        print('Starting WiFiProblems Test with duration: {} at {}'.format(test_duration_sec, start))
+        while time.time()-start < test_duration_sec:
+            iteration += 1
+            try:
+                self.start_test_for_service('medium-ds-stream')
+            except ValueError:
+                if error_count > 3:
+                    print("Still no station or cx.. Giving up after 3 retries.")
+                    break
+                error_count += 1
+                print("Couldn't find the endpoint or station. Refreshing LanForge data..")
+                self.refresh_configured_endpoints()
+                continue
+
+            # Apply each attenuation profile
+            if self.attenuator is None:
+                print('Attenuator is needed for this test. Aborting.')
+                break
+
+            for atten_label, atten_profile in [('disabled attenuation profile', self.attenuator.disabled_attenuation_profile), ('low attenuation profile', self.attenuator.low_attenuation_profile),
+                    ('mid attenuation profile', self.attenuator.mid_attenuation_profile), ('high attenuation profile', self.attenuator.high_attenuation_profile)]:
+                print('{} Applying: {}. Iteration: {}. Time elapsed: {}'.format(datetime.utcnow().isoformat(), atten_label, iteration, time.time()-start))
+                atten_profile(iteration)
+
+                # For each profile, run the interference steps
+                if self.noise_generator is not None:
+                    for g in self.noise_generator.db_steps:
+                        tb.limesdr_sink_1.set_gain(g, 0)  # Node1 / LF2
+                        tb.limesdr_sink_1.set_gain(g, 1)  # ROOT CHAMBER
+                        print('[DB_NOISEGENERATOR_LOG][ATTEN_PROFILE={}] {} - {}'.format(
+                            atten_label, datetime.now().isoformat(), json.dumps({'iteration': iteration, 'timestamp': datetime.utcnow().isoformat(), 'db': g, 'sleep': self.seconds_per_noise_step})))
+                        sleep(self.seconds_per_noise_step)
+                else:
+                    sleep(self.seconds_per_atten_step)
+            self.refresh_configured_endpoints()
 
         self.stop()
 
@@ -351,6 +442,9 @@ class CreateAttenuator(Realm):
     def _apply(self):
         self._build()
     
+    def _print(self, iteration, db):
+        print('[DB_ATTEN_LOG] {} - {}'.format(datetime.now().isoformat(), json.dumps({'iteration': iteration, 'timestamp': datetime.utcnow().isoformat(), 'db': db})))
+    
     def _attenuate(self, val):
         self.attenuator_profile.atten_val = val
         self._build()
@@ -358,31 +452,79 @@ class CreateAttenuator(Realm):
     def reset_all(self):
         self.defaults.create()
     
-    def base_profile(self):
+    def base_profile(self, iteration=0):
         self.attenuator_profile = self.new_attenuator_profile()
         self._configure('3066', 'all', 955)
-        self._configure('3067', 'all', 955)      # Throttlers chamber (Node2) (Air)
+        self._configure('3067', 'all', 955)        # Throttlers chamber (Node2) (Air)
         self._configure('3068', 'all', 955)
-        self._configure('3070', 'all', 0)        # Client running service (Node1)
-        self._configure('3073', 0, 0)            # Conducted Node2 - Needs to be open for throttlers
-        self._configure('3073', 1, 0)            # Conducted Node2 - Needs to be open for throttlers
-        self._configure('3073', 2, 955)          # Conducted Node1 - Needs to be completely attenuated
-        self._configure('3073', 3, 955)          # Conducted Node1 - Needs to be completely attenuated
+        self._configure('3070', 'all', 0)          # Client running service (Node1)
+        self._configure('3073', 0, 500)            # Conducted Node2 - Needs to be open for throttlers
+        self._configure('3073', 1, 500)            # Conducted Node2 - Needs to be open for throttlers
+        self._configure('3073', 2, 955)            # Conducted Node1 - Needs to be completely attenuated
+        self._configure('3073', 3, 955)            # Conducted Node1 - Needs to be completely attenuated
         self._configure('3076', 'all', 955)
         self._configure('3084', 'all', 955)
+        self._apply()
+        self._print(iteration, 0)
 
-    def disabled_attenuation_profile(self):
-        self._configure('3067', 'all', 0)
+    def disabled_attenuation_profile(self, iteration):
+        self._configure('3070', 'all', 0)
         self._apply()
-    def low_attenuation_profile(self):
-        self._configure('3067', 'all', 100)
+        self._print(iteration, 0)
+    def low_attenuation_profile(self, iteration):
+        self._configure('3070', 'all', 100)
         self._apply()
-    def mid_attenuation_profile(self):
-        self._configure('3067', 'all', 200)
+        self._print(iteration, 10)
+    def mid_attenuation_profile(self, iteration):
+        self._configure('3070', 'all', 200)
         self._apply()
-    def high_attenuation_profile(self):
-        self._configure('3067', 'all', 300)
+        self._print(iteration, 20)
+    def high_attenuation_profile(self, iteration):
+        self._configure('3070', 'all', 300)
         self._apply()
+        self._print(iteration, 30)
+
+
+class NoiseGenerator(gr.top_block):
+
+    def __init__(self, db_steps=None):
+        gr.top_block.__init__(self, "Dualchan Ampjammer")
+
+        ##################################################
+        # Variables
+        ##################################################
+        self.target_freq = target_freq = 2.437e9
+        self.samp_rate = samp_rate = 20e6
+
+        ##################################################
+        # Blocks
+        ##################################################
+        self.limesdr_sink_1 = limesdr.sink('', 2, '/root/sdr/limesdr_2437mhz_20mhz_channelB_7db_mimo_calibrated_best_exportconf.ini', '')
+        self.analog_noise_source_x_0 = analog.noise_source_c(analog.GR_GAUSSIAN, 100, -42)
+
+
+        ##################################################
+        # Connections
+        ##################################################
+        self.connect((self.analog_noise_source_x_0, 0), (self.limesdr_sink_1, 0))
+        self.connect((self.analog_noise_source_x_0, 0), (self.limesdr_sink_1, 1))
+        self.db_steps = db_steps
+
+
+    def get_target_freq(self):
+        return self.target_freq
+
+    def set_target_freq(self, target_freq):
+        self.target_freq = target_freq
+        self.limesdr_sink_1.set_center_freq(self.target_freq, 0)
+
+    def get_samp_rate(self):
+        return self.samp_rate
+
+    def set_samp_rate(self, samp_rate):
+        self.samp_rate = samp_rate
+        self.limesdr_sink_1.set_digital_filter(self.samp_rate, 0)
+        self.limesdr_sink_1.set_digital_filter(self.samp_rate, 1)
 
 
 def main():
@@ -427,10 +569,18 @@ def main():
 
     # Run
     attenuator = CreateAttenuator(host=args.mgr, port=args.mgr_port, serno='all', idx='all', val=955, _debug_on=args.debug)
-    wifi_problems_test = WiFiProblemsTest(host=args.mgr, port=args.mgr_port, _debug_on=args.debug, attenuator=attenuator)
+    # attenuator = None
+    noise_generator = NoiseGenerator([1, 10, 30, 35, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50])
+    # noise_generator = None
+    wifi_problems_test = WiFiProblemsTest(host=args.mgr, port=args.mgr_port, _debug_on=args.debug, attenuator=attenuator, noise_generator=noise_generator)
     # wifi_problems_test.run()
     return wifi_problems_test
 
 if __name__ == "__main__":
     w = main()
-    w.run()
+    try:
+        w.run()
+    except Exception as e:
+        raise(e)
+    finally:
+        w.stop()
