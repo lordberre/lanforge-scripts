@@ -1,11 +1,20 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import importlib
 import time
 from pprint import pprint
 from random import randint
+from geometry import Rect,Group
 
-from geometry import Rect, Group
 
-from LANforge import LFUtils
-from base_profile import BaseProfile
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+base_profile = importlib.import_module("py-json.base_profile")
+BaseProfile = base_profile.BaseProfile
 
 
 class VRProfile(BaseProfile):
@@ -64,35 +73,10 @@ class VRProfile(BaseProfile):
         occupied_area = self.get_occupied_area(resource=resource, debug=debug)
         return Rect(x=0, y=0, height=occupied_area.height, width=occupied_area.width)
 
-    def get_all_vrcx_bounds(self, resource=None, debug=False):
-        """
-        Computes bounds of all free vrcx ports but omits Virtual Routers
-        :param resource:
-        :param debug:
-        :return: rectangle encompasing all free vrcx ports or None
-        """
-        if (resource is None) or (resource < 1):
-            raise ValueError("get_netsmith_bounds wants resource id")
-        vrcx_map = self.vrcx_list(resource=resource, debug=debug)
-        rect_list = []
-        for eid,item in vrcx_map.items():
-            rect_list.append(self.vr_to_rect(item))
-        if len(rect_list) < 1:
-            return None
-        bounding_group = Group()
-        for item in rect_list:
-            bounding_group.append(item)
-
-        bounding_group.update()
-
-        return Rect(x=bounding_group.x,
-                    y=bounding_group.y,
-                    width=bounding_group.width,
-                    height=bounding_group.height)
 
     def vr_eid_to_url(self, eid_str=None, debug=False):
         debug |= self.debug
-        if (eid_str is None) or ("" == eid_str) or (eid_str.index(".") < 1):
+        if (eid_str is None) or (eid_str == "") or (eid_str.index(".") < 1):
             raise ValueError("vr_eid_to_url cannot read eid[%s]" % eid_str)
         hunks = eid_str.split(".")
         if len(hunks) > 3:
@@ -129,7 +113,7 @@ class VRProfile(BaseProfile):
                           resource=1,
                           debug=False):
         debug |= self.debug
-        if (resource is None) or (resource == 0) or ("" == resource):
+        if (resource is None) or (resource == 0) or (resource == ""):
             raise ValueError("resource needs to be a number greater than 1")
 
         router_map = self.router_list(resource=resource, debug=debug)
@@ -352,9 +336,9 @@ class VRProfile(BaseProfile):
         :return: True if area is inside listed virtual router(s)
         """
         debug |= self.debug
-        if (resource is None) or (resource == 0) or ("" == resource):
+        if (resource is None) or (resource == 0) or (resource == ""):
             raise ValueError("resource needs to be a number greater than 1")
-        if (vrcx_rect is None) or type(vrcx_rect ) or ("" == resource):
+        if (vrcx_rect is None) or type(vrcx_rect) or (resource == ""):
             raise ValueError("resource needs to be a number greater than 1")
         router_list = self.router_list(resource=resource, debug=debug)
         #router_list = self.json_get("/vr/1/%s/%s?fields=eid,x,y,height,width")

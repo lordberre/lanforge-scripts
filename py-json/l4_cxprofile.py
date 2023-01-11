@@ -1,15 +1,22 @@
-
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-import pprint
-from pprint import pprint
+import sys
+import os
+import importlib
 import requests
 import pandas as pd
 import time
 import datetime
 import ast
-import csv
-import os
+from pprint import pformat
+import logging
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+
+logger = logging.getLogger(__name__)
+
 
 class L4CXProfile(LFCliBase):
     def __init__(self, lfclient_host, lfclient_port, local_realm, debug_=False):
@@ -41,36 +48,39 @@ class L4CXProfile(LFCliBase):
                             passes -= 1
                             debug_info[name] = {field: info[field.replace("+", " ")]}
             if debug:
-                print(debug_info)
+                logger.debug(debug_info)
             if passes == expected_passes:
                 return True
             else:
-                print(list(debug_info), " Endps in this list showed errors getting to %s " % self.url)
+                logger.info(list(debug_info), " Endps in this list showed errors getting to %s " % self.url)
                 return False
 
     def start_cx(self):
-        print("Starting CXs...")
+        logger.info("Starting CXs...")
         for cx_name in self.created_cx.keys():
             self.json_post("/cli-json/set_cx_state", {
                 "test_mgr": "default_tm",
                 "cx_name": self.created_cx[cx_name],
                 "cx_state": "RUNNING"
             }, debug_=self.debug)
+            # this is for a visual affect someone watching the screen, leave as print
             print(".", end='')
         print("")
 
     def stop_cx(self):
-        print("Stopping CXs...")
+        logger.info("Stopping CXs...")
         for cx_name in self.created_cx.keys():
             self.json_post("/cli-json/set_cx_state", {
                 "test_mgr": "default_tm",
                 "cx_name": self.created_cx[cx_name],
                 "cx_state": "STOPPED"
             }, debug_=self.debug)
+            # this is for a visual affect someone watching the screen, leave as print
             print(".", end='')
         print("")
 
-    def compare_vals(self, old_list, new_list):
+    @staticmethod
+    def compare_vals(old_list, new_list):
         passes = 0
         expected_passes = 0
         if len(old_list) == len(new_list):
@@ -88,7 +98,7 @@ class L4CXProfile(LFCliBase):
     def get_bytes(self):
         time.sleep(1)
         cx_list = self.json_get("layer4/list?fields=name,%s" % self.test_type, debug_=self.debug)
-        # print("==============\n", cx_list, "\n==============")
+        # logger.info("==============\n", cx_list, "\n==============")
         cx_map = {}
         for cx_name in cx_list['endpoint']:
             if cx_name != 'uri' and cx_name != 'handler':
@@ -112,13 +122,13 @@ class L4CXProfile(LFCliBase):
                     if name in self.created_cx.keys():
                         expected_passes += 1
                         if info['urls/s'] * self.requests_per_ten >= self.target_requests_per_ten * .9:
-                            # print(name, info['urls/s'], info['urls/s'] * self.requests_per_ten, self.target_requests_per_ten * .9)
+                            # logger.info(name, info['urls/s'], info['urls/s'] * self.requests_per_ten, self.target_requests_per_ten * .9)
                             passes += 1
 
         return passes == expected_passes
 
     def cleanup(self):
-        print("Cleaning up cxs and endpoints")
+        logger.info("Cleaning up cxs and endpoints")
         if len(self.created_cx) != 0:
             for cx_name in self.created_cx.keys():
                 req_url = "cli-json/rm_cx"
@@ -127,18 +137,24 @@ class L4CXProfile(LFCliBase):
                     "cx_name": self.created_cx[cx_name]
                 }
                 self.json_post(req_url, data)
-                # pprint(data)
+                # logger.debug(pformat(data))
                 req_url = "cli-json/rm_endp"
                 data = {
                     "endp_name": cx_name
                 }
                 self.json_post(req_url, data)
-                # pprint(data)
+                # logger.debug(pformat(data))
 
-    def create(self, ports=[], sleep_time=.5, debug_=False, suppress_related_commands_=None):
+    def create(self, ports=None, sleep_time=.5, debug_=False, suppress_related_commands_=None):
+        if ports is None:
+            ports = []
         cx_post_data = []
         for port_name in ports:
-            print("port_name: {} len: {} self.local_realm.name_to_eid(port_name): {}".format(port_name, len(self.local_realm.name_to_eid(port_name)), self.local_realm.name_to_eid(port_name)))
+            logger.info("port_name: {} len: {} self.local_realm.name_to_eid(port_name): {}".format(port_name,
+                                                                                             len(self.local_realm.name_to_eid(
+                                                                                                 port_name)),
+                                                                                             self.local_realm.name_to_eid(
+                                                                                                 port_name)))
             shelf = self.local_realm.name_to_eid(port_name)[0]
             resource = self.local_realm.name_to_eid(port_name)[1]
             name = self.local_realm.name_to_eid(port_name)[2]
@@ -173,6 +189,10 @@ class L4CXProfile(LFCliBase):
                                        suppress_related_commands_=suppress_related_commands_)
             time.sleep(sleep_time)
 
+        # TODO:  Verify they were created here, or at least add a method to verify they were
+        # created and add that to create_l4.py
+        return True
+
     def monitor(self,
                 duration_sec=60,
                 monitor_interval=1,
@@ -185,21 +205,27 @@ class L4CXProfile(LFCliBase):
                 arguments=None,
                 iterations=0,
                 debug=False):
-        try:
+        if duration_sec:
             duration_sec = LFCliBase.parse_time(duration_sec).seconds
-        except:
+        else:
             if (duration_sec is None) or (duration_sec <= 1):
+                logger.critical("L4CXProfile::monitor wants duration_sec > 1 second")
                 raise ValueError("L4CXProfile::monitor wants duration_sec > 1 second")
-            if (duration_sec <= monitor_interval):
-                raise ValueError("L4CXProfile::monitor wants duration_sec > monitor_interval")
-        if report_file == None:
+        if duration_sec <= monitor_interval:
+            logger.critical("L4CXProfile::monitor wants duration_sec > monitor_interval")
+            raise ValueError("L4CXProfile::monitor wants duration_sec > monitor_interval")
+        if report_file is None:
+            logger.critical("Monitor requires an output file to be defined")
             raise ValueError("Monitor requires an output file to be defined")
-        if created_cx == None:
+        if created_cx is None:
+            logger.critical("Monitor needs a list of Layer 4 connections")
             raise ValueError("Monitor needs a list of Layer 4 connections")
         if (monitor_interval is None) or (monitor_interval < 1):
+            logger.critical("L4CXProfile::monitor wants monitor_interval >= 1 second")
             raise ValueError("L4CXProfile::monitor wants monitor_interval >= 1 second")
         if output_format is not None:
             if output_format.lower() != report_file.split('.')[-1]:
+                logger.critical('Filename %s does not match output format %s' % (report_file, output_format))
                 raise ValueError('Filename %s does not match output format %s' % (report_file, output_format))
         else:
             output_format = report_file.split('.')[-1]
@@ -207,20 +233,20 @@ class L4CXProfile(LFCliBase):
         # Step 1 - Assign column names 
 
         if col_names is not None and len(col_names) > 0:
-            header_row=col_names
+            header_row = col_names
         else:
-            header_row=list((list(self.json_get("/layer4/all")['endpoint'][0].values())[0].keys()))
+            header_row = list((list(self.json_get("/layer4/all")['endpoint'][0].values())[0].keys()))
         if debug:
-            print(header_row)
+            logger.debug(header_row)
 
         # Step 2 - Monitor columns
         start_time = datetime.datetime.now()
         end_time = start_time + datetime.timedelta(seconds=duration_sec)
-        sleep_interval =  round(duration_sec // 5)
+        sleep_interval = round(duration_sec // 5)
         if debug:
-            print("Sleep_interval is %s ", sleep_interval)
-            print("Start time is %s " , start_time)
-            print("End time is %s " ,end_time)
+            logger.debug("Sleep_interval is %s ", sleep_interval)
+            logger.debug("Start time is %s ", start_time)
+            logger.debug("End time is %s ", end_time)
         value_map = dict()
         passes = 0
         expected_passes = 0
@@ -228,7 +254,7 @@ class L4CXProfile(LFCliBase):
         if self.test_type != 'urls':
             old_rx_values = self.get_bytes()
 
-        for test in range(1+iterations):
+        for test in range(1 + iterations):
             while datetime.datetime.now() < end_time:
                 if col_names is None:
                     response = self.json_get("/layer4/all")
@@ -236,13 +262,13 @@ class L4CXProfile(LFCliBase):
                     fields = ",".join(col_names)
                     response = self.json_get("/layer4/%s?fields=%s" % (created_cx, fields))
                 if debug:
-                    print(response)
+                    logger.debug(response)
                 if response is None:
-                    print(response)
+                    logger.debug(response)
                     raise ValueError("Cannot find any endpoints")
                 if monitor:
                     if debug:
-                        print(response)
+                        logger.debug(response)
 
                 time.sleep(sleep_interval)
                 t = datetime.datetime.now()
@@ -270,32 +296,32 @@ class L4CXProfile(LFCliBase):
                     # self.exit_fail()
                 time.sleep(monitor_interval)
 
-        print(value_map)
+        logger.info(value_map)
 
-    #[further] post-processing data, after test completion
+        # [further] post-processing data, after test completion
         full_test_data_list = []
         for test_timestamp, data in value_map.items():
-            #reduce the endpoint data to single dictionary of dictionaries
+            # reduce the endpoint data to single dictionary of dictionaries
             for datum in data["endpoint"]:
                 for endpoint_data in datum.values():
                     if debug:
-                        print(endpoint_data)
+                        logger.debug(endpoint_data)
                     endpoint_data["Timestamp"] = test_timestamp
                     full_test_data_list.append(endpoint_data)
-
 
         header_row.append("Timestamp")
         header_row.append('Timestamp milliseconds')
         df = pd.DataFrame(full_test_data_list)
 
         df["Timestamp milliseconds"] = [self.get_milliseconds(x) for x in df["Timestamp"]]
-        #round entire column
-        df["Timestamp milliseconds"]=df["Timestamp milliseconds"].astype(int)
-        df["Timestamp"]=df["Timestamp"].apply(lambda x:x.strftime("%m/%d/%Y %I:%M:%S"))
-        df=df[["Timestamp","Timestamp milliseconds", *header_row[:-2]]]
-        #compare previous data to current data
+        # round entire column
+        df["Timestamp milliseconds"] = df["Timestamp milliseconds"].astype(int)
+        df["Timestamp"] = df["Timestamp"].apply(lambda x: x.strftime("%m/%d/%Y %I:%M:%S"))
+        df = df[["Timestamp", "Timestamp milliseconds", *header_row[:-2]]]
+        # compare previous data to current data
 
-        systeminfo = ast.literal_eval(requests.get('http://'+str(self.lfclient_host)+':'+str(self.lfclient_port)).text)
+        systeminfo = ast.literal_eval(
+            requests.get('http://' + str(self.lfclient_host) + ':' + str(self.lfclient_port)).text)
 
         if output_format == 'hdf':
             df.to_hdf(report_file, 'table', append=True)
@@ -308,7 +334,7 @@ class L4CXProfile(LFCliBase):
             df.to_excel(report_file, index=False)
         if output_format == 'df':
             return df
-        supported_formats = ['csv', 'json', 'stata', 'pickle','html']
+        supported_formats = ['csv', 'json', 'stata', 'pickle', 'html']
         for x in supported_formats:
             if output_format.lower() == x or report_file.split('.')[-1] == x:
-                exec('df.to_' + x + '("'+report_file+'")')
+                exec('df.to_' + x + '("' + report_file + '")')

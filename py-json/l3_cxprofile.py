@@ -1,11 +1,21 @@
 # !/usr/bin/env python3
-import pprint
-from pprint import pprint
-from LANforge.lfcli_base import LFCliBase
-import csv
+import sys
+import os
+import importlib
 import pandas as pd
 import time
 import datetime
+import logging
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+pandas_extensions = importlib.import_module("py-json.LANforge.pandas_extensions")
+port_probe = importlib.import_module("py-json.port_probe")
+ProbePort = port_probe.ProbePort
+
+logger = logging.getLogger(__name__)
 
 
 class L3CXProfile(LFCliBase):
@@ -13,8 +23,8 @@ class L3CXProfile(LFCliBase):
                  lfclient_host,
                  lfclient_port,
                  local_realm,
-                 side_a_min_bps=None,
-                 side_b_min_bps=None,
+                 side_a_min_bps=256000,
+                 side_b_min_bps=256000,
                  side_a_max_bps=0,
                  side_b_max_bps=0,
                  side_a_min_pdu=-1,
@@ -68,16 +78,16 @@ class L3CXProfile(LFCliBase):
         return self.created_cx.keys()
 
     def get_cx_report(self):
-        self.data = {}
+        data = dict()
         for cx_name in self.get_cx_names():
-            self.data[cx_name] = self.json_get("/cx/" + cx_name).get(cx_name)
-        return self.data
+            data[cx_name] = self.json_get("/cx/" + cx_name).get(cx_name)
+        return data
 
     def __get_rx_values(self):
         cx_list = self.json_get("endp?fields=name,rx+bytes")
         if self.debug:
-            print(self.created_cx.values())
-            print("==============\n", cx_list, "\n==============")
+            logger.debug(self.created_cx.values())
+            logger.debug("==============\n {cx_list}\n==============".format(cx_list=cx_list))
         cx_rx_map = {}
         for cx_name in cx_list['endpoint']:
             if cx_name != 'uri' and cx_name != 'handler':
@@ -87,7 +97,8 @@ class L3CXProfile(LFCliBase):
                             cx_rx_map[item] = value_rx
         return cx_rx_map
 
-    def __compare_vals(self, old_list, new_list):
+    @staticmethod
+    def __compare_vals(old_list, new_list):
         passes = 0
         expected_passes = 0
         if len(old_list) == len(new_list):
@@ -113,55 +124,66 @@ class L3CXProfile(LFCliBase):
                 layer3_cols=None,
                 port_mgr_cols=None,
                 created_cx=None,
-                monitor=True,
                 report_file=None,
                 systeminfopath=None,
                 output_format=None,
                 script_name=None,
                 arguments=None,
                 compared_report=None,
+                adjust_cx_json=False,  # used for lf_test_max_association.py (removes created_cx from json get to alleviate url > 2048 bytes error)
                 debug=False):
-        try:
+        if duration_sec:
             duration_sec = self.parse_time(duration_sec).seconds
-        except:
-            if (duration_sec is None) or (duration_sec <= 1):
-                raise ValueError("L3CXProfile::monitor wants duration_sec > 1 second")
-            if (duration_sec <= monitor_interval_ms):
-                raise ValueError("L3CXProfile::monitor wants duration_sec > monitor_interval")
-        if report_file == None:
+        else:
+            logger.critical("L3CXProfile::monitor wants duration_sec > 1 second")
+            raise ValueError("L3CXProfile::monitor wants duration_sec > 1 second")
+        if duration_sec <= monitor_interval_ms:
+            logger.critical("L3CXProfile::monitor wants duration_sec > monitor_interval")
+            raise ValueError("L3CXProfile::monitor wants duration_sec > monitor_interval")
+        if report_file is None:
+            logger.critical("Monitor requires an output file to be defined")
             raise ValueError("Monitor requires an output file to be defined")
-        if systeminfopath == None:
+        if systeminfopath is None:
             raise ValueError("Monitor requires a system info path to be defined")
-        if created_cx == None:
+        if created_cx is None:
+            logger.critical("Monitor needs a list of Layer 3 connections")
             raise ValueError("Monitor needs a list of Layer 3 connections")
         if (monitor_interval_ms is None) or (monitor_interval_ms < 1):
+            logger.critical("L3CXProfile::monitor wants monitor_interval >= 1 second")
             raise ValueError("L3CXProfile::monitor wants monitor_interval >= 1 second")
         if layer3_cols is None:
+            logger.critical("L3CXProfile::monitor wants a list of column names to monitor")
             raise ValueError("L3CXProfile::monitor wants a list of column names to monitor")
-        if output_format is not None:
+        if output_format:
             if output_format.lower() != report_file.split('.')[-1]:
-                raise ValueError('Filename %s has an extension that does not match output format %s .' % (
-                    report_file, output_format))
+                logger.critical('Filename {report_file} has an extension that does not match output format {output_format} '.format(
+                    report_file=report_file, output_format=output_format))
+
+                raise ValueError('Filename {report_file} has an extension that does not match output format {output_format} '.format(
+                    report_file=report_file, output_format=output_format))
         else:
             output_format = report_file.split('.')[-1]
 
         # default save to csv first
         if report_file.split('.')[-1] != 'csv':
             report_file = report_file.replace(str(output_format), 'csv', 1)
-            print("Saving rolling data into..." + str(report_file))
+            logger.info("Saving rolling data into...{report_file}".format(report_file=report_file))
 
         # ================== Step 1, set column names and header row
         layer3_cols = [self.replace_special_char(x) for x in layer3_cols]
         layer3_fields = ",".join(layer3_cols)
         default_cols = ['Timestamp', 'Timestamp milliseconds epoch', 'Timestamp seconds epoch', 'Duration elapsed']
         default_cols.extend(layer3_cols)
-        if port_mgr_cols is not None:
+        # append alias to port_mgr_cols if not present needed later
+        if port_mgr_cols:
+            if 'alias' not in port_mgr_cols:
+                port_mgr_cols.append('alias')
+
+        if port_mgr_cols:
             default_cols.extend(port_mgr_cols)
         header_row = default_cols
 
-        # csvwriter.writerow([systeminfo['VersionInfo']['BuildVersion'], script_name, str(arguments)])
-
-        if port_mgr_cols is not None:
+        if port_mgr_cols:
             port_mgr_cols = [self.replace_special_char(x) for x in port_mgr_cols]
             port_mgr_cols_labelled = []
             for col_name in port_mgr_cols:
@@ -185,110 +207,181 @@ class L3CXProfile(LFCliBase):
         expected_passes = 0
         old_cx_rx_values = self.__get_rx_values()
 
-        # instantiate csv file here, add specified column headers
-        csvfile = open(str(report_file), 'w')
-        csvwriter = csv.writer(csvfile, delimiter=",")
-        csvwriter.writerow(header_row)
-
         # wait 10 seconds to get proper port data
         time.sleep(10)
 
         # for x in range(0,int(round(iterations,0))):
         initial_starttime = datetime.datetime.now()
+        timestamp_data = list()
         while datetime.datetime.now() < end_time:
             t = datetime.datetime.now()
             timestamp = t.strftime("%m/%d/%Y %I:%M:%S")
             t_to_millisec_epoch = int(self.get_milliseconds(t))
             t_to_sec_epoch = int(self.get_seconds(t))
             time_elapsed = int(self.get_seconds(t)) - int(self.get_seconds(initial_starttime))
-            basecolumns = [timestamp, t_to_millisec_epoch, t_to_sec_epoch, time_elapsed]
-            layer_3_response = self.json_get("/endp/%s?fields=%s" % (created_cx, layer3_fields))
-            if port_mgr_cols is not None:
-                port_mgr_response = self.json_get("/port/1/1/%s?fields=%s" % (sta_list, port_mgr_fields))
-            # get info from port manager with list of values from cx_a_side_list
-            if "endpoint" not in layer_3_response or layer_3_response is None:
-                print(layer_3_response)
-                raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
-                if debug:
-                    print("Json layer_3_response from LANforge... " + str(layer_3_response))
-            if port_mgr_cols is not None:
-                if "interfaces" not in port_mgr_response or port_mgr_response is None:
-                    print(port_mgr_response)
-                    raise ValueError("Cannot find columns requested to be searched. Exiting script, please retry.")
-                if debug:
-                    print("Json port_mgr_response from LANforge... " + str(port_mgr_response))
+            stations = [station.split('.')[-1] for station in sta_list]
+            stations = ','.join(stations)
 
-            for endpoint in layer_3_response["endpoint"]:  # each endpoint is a dictionary
-                endp_values = list(endpoint.values())[0]
-                temp_list = basecolumns
-                for columnname in header_row[len(basecolumns):]:
-                    temp_list.append(endp_values[columnname])
-                    if port_mgr_cols is not None:
-                        for sta_name in sta_list_edit:
-                            if sta_name in current_sta:
-                                for interface in port_mgr_response["interfaces"]:
-                                    if sta_name in list(interface.keys())[0]:
-                                        merge = temp_endp_values.copy()
-                                        # rename keys (separate port mgr 'rx bytes' from layer3 'rx bytes')
-                                        port_mgr_values_dict = list(interface.values())[0]
-                                        renamed_port_cols = {}
-                                        for key in port_mgr_values_dict.keys():
-                                            renamed_port_cols['port mgr - ' + key] = port_mgr_values_dict[key]
-                                        merge.update(renamed_port_cols)
-                                        for name in port_mgr_cols:
-                                            temp_list.append(merge[name])
-                csvwriter.writerow(temp_list)
+            if port_mgr_cols:
+                port_mgr_response = self.json_get("/port/1/1/%s?fields=%s" % (stations, port_mgr_fields))
+
+            # if True, removes created_cx from json get to alleviate url > 2048 bytes error
+            if adjust_cx_json:
+                layer_3_response = self.json_get("/endp/?fields=%s" % (layer3_fields))
+            else:
+                layer_3_response = self.json_get("/endp/%s?fields=%s" % (created_cx, layer3_fields))
+            # logger.info(layer_3_response)
 
             new_cx_rx_values = self.__get_rx_values()
             if debug:
-                print(old_cx_rx_values, new_cx_rx_values)
-                print("\n-----------------------------------")
-                print(t)
-                print("-----------------------------------\n")
+                logger.debug(old_cx_rx_values, new_cx_rx_values)
+                logger.debug("\n-----------------------------------")
+                logger.debug(t)
+                logger.debug("-----------------------------------\n")
             expected_passes += 1
             if self.__compare_vals(old_cx_rx_values, new_cx_rx_values):
                 passes += 1
             else:
+                # TODO track where this goes?
                 self.fail("FAIL: Not all stations increased traffic")
-                self.exit_fail()
-            try:
-                cx_data = self.json_get("/cx/all")
-                cx_data.pop("handler")
-                cx_data.pop("uri")
 
-                for i in self.created_cx.keys():
-                    endp_a_data = self.json_get("/endp/"+ cx_data[i]['endpoints'][0])
-                    endp_b_data = self.json_get("/endp/" + cx_data[i]['endpoints'][1])
-                    print("cx name:", i, "\n",
-                          " bps tx a :", endp_a_data['endpoint']['tx rate'], " --> ",
-                          "  bps rx b : ", endp_b_data['endpoint']['rx rate'],
-                          "  rx drop % b : ", cx_data[i]['rx drop % b'], "\n"
-                          "  tx bytes a : ", endp_a_data['endpoint']['tx bytes'], " --> " 
-                          "  rx bytes b", endp_b_data['endpoint']['rx bytes'],  "\n"
-                          "  tx bytes b : ", endp_b_data['endpoint']['tx bytes'], " --> " 
-                          "  rx bytes a", endp_a_data['endpoint']['rx bytes'], "\n"
-                          "  bps tx b :", endp_b_data['endpoint']['tx rate'], " --> "
-                          "  bps rx a : ", endp_a_data['endpoint']['rx rate'],
-                          "  rx drop % a :", cx_data[i]['rx drop % a'], "\n"
-                          "  pkt rx a :", cx_data[i]['pkt rx a'], "  pkt rx b : ", cx_data[i]['pkt rx b'],
-                          )
-                print("\n\n\n")
-            except Exception as e:
-                print(e)
-            time.sleep(monitor_interval_ms)
-        csvfile.close()
+            result = dict()  # create dataframe from layer 3 results
+            if type(layer_3_response) is dict:
+                for dictionary in layer_3_response['endpoint']:
+                    logger.debug('layer_3_data: {dictionary}'.format(dictionary=dictionary))
+                    result.update(dictionary)
+            else:
+                pass
+            layer3 = pd.DataFrame(result.values())
+            layer3.columns = ['l3-' + x for x in layer3.columns]
+
+            if port_mgr_cols:  # create dataframe from port mgr results
+                result = dict()
+                if type(port_mgr_response) is dict:
+                    logger.info("port_mgr_response {pmr}".format(pmr=port_mgr_response))
+                    if 'interfaces' in port_mgr_response:
+                        for dictionary in port_mgr_response['interfaces']:
+                            if debug:
+                                logger.debug('port mgr data: {dictionary}'.format(dictionary=dictionary))
+                            result.update(dictionary)
+
+                    elif 'interface' in port_mgr_response:
+                        dict_update = {port_mgr_response['interface']['alias']: port_mgr_response['interface']}
+                        if debug:
+                            logger.debug(dict_update)
+                        result.update(dict_update)
+                        if debug:
+                            logger.debug(result)
+                    else:
+                        logger.critical('interfaces and interface not in port_mgr_response')
+                        raise ValueError('interfaces and interface not in port_mgr_response')
+                    portdata_df = pd.DataFrame(result.values())
+                    logger.info("portdata_df {pd}".format(pd=portdata_df))
+                    portdata_df.columns = ['port-' + x for x in portdata_df.columns]
+                    portdata_df['alias'] = portdata_df['port-alias']
+
+                    layer3_alias = list()  # Add alias to layer 3 dataframe
+                    for cross_connect in layer3['l3-name']:
+                        for port in portdata_df['port-alias']:
+                            if port in cross_connect:
+                                layer3_alias.append(port)
+                    if len(layer3_alias) == layer3.shape[0]:
+                        layer3['alias'] = layer3_alias
+                    else:
+                        logger.critical(("The Stations or Connection on LANforge did not match expected,",
+                                        " Check if LANForge initial state correct or delete/cleanup corrects"))
+                        raise ValueError(("The Stations or Connection on LANforge did not match expected,",
+                                        " Check if LANForge initial state correct or delete/cleanup corrects"))
+
+                    timestamp_df = pd.merge(layer3, portdata_df, on='alias')
+            else:
+                timestamp_df = layer3
+            probe_port_df_list = list()
+            for station in sta_list:
+                probe_port = ProbePort(lfhost=self.lfclient_host,
+                                       lfport=self.lfclient_port,
+                                       eid_str=station,
+                                       debug=self.debug)
+                probe_results = dict()
+                if (probe_port.refreshProbe()):
+                    probe_results['Signal Avg Combined'] = probe_port.getSignalAvgCombined()
+                    probe_results['Signal Avg per Chain'] = probe_port.getSignalAvgPerChain()
+                    probe_results['Signal Combined'] = probe_port.getSignalCombined()
+                    probe_results['Signal per Chain'] = probe_port.getSignalPerChain()
+                    if 'Beacon Av Signal' in probe_results.keys():
+                        probe_results['Beacon Avg Signal'] = probe_port.getBeaconSignalAvg()
+                    else:
+                        probe_results['Beacon Avg Signal'] = "0"
+                    # probe_results['HE status'] = probe_port.he
+                    probe_results['TX Bitrate'] = probe_port.tx_bitrate
+                    probe_results['TX Mbps'] = probe_port.tx_mbit
+                    probe_results['TX MCS ACTUAL'] = probe_port.tx_mcs
+                    if probe_port.tx_mcs:
+                        probe_results['TX MCS'] = int(probe_port.tx_mcs) % 8
+                    else:
+                        probe_results['TX MCS'] = probe_port.tx_mcs
+                    probe_results['TX NSS'] = probe_port.tx_nss
+                    probe_results['TX MHz'] = probe_port.tx_mhz
+                    if probe_port.tx_gi:
+                        probe_results['TX GI ns'] = (probe_port.tx_gi * 10**9)
+                    else:
+                        probe_results['TX GI ns'] = probe_port.tx_gi
+                    probe_results['TX Mbps Calc'] = probe_port.tx_mbit_calc
+                    probe_results['TX GI'] = probe_port.tx_gi
+                    probe_results['TX Mbps short GI'] = probe_port.tx_data_rate_gi_short_Mbps
+                    probe_results['TX Mbps long GI'] = probe_port.tx_data_rate_gi_long_Mbps
+                    probe_results['RX Bitrate'] = probe_port.rx_bitrate
+                    probe_results['RX Mbps'] = probe_port.rx_mbit
+                    probe_results['RX MCS ACTUAL'] = probe_port.rx_mcs
+                    if probe_port.rx_mcs:
+                        probe_results['RX MCS'] = int(probe_port.rx_mcs) % 8
+                    else:
+                        probe_results['RX MCS'] = probe_port.rx_mcs
+                    probe_results['RX NSS'] = probe_port.rx_nss
+                    probe_results['RX MHz'] = probe_port.rx_mhz
+                    if probe_port.rx_gi:
+                        probe_results['RX GI ns'] = (probe_port.rx_gi * 10**9)
+                    else:
+                        probe_results['RX GI ns'] = probe_port.rx_gi
+                    probe_results['RX Mbps Calc'] = probe_port.rx_mbit_calc
+                    probe_results['RX GI'] = probe_port.rx_gi
+                    probe_results['RX Mbps short GI'] = probe_port.rx_data_rate_gi_short_Mbps
+                    probe_results['RX Mbps long GI'] = probe_port.rx_data_rate_gi_long_Mbps
+
+                    probe_df_initial = pd.DataFrame(probe_results.values()).transpose()
+                    probe_df_initial.columns = probe_results.keys()
+                    probe_df_initial.columns = ['probe ' + x for x in probe_df_initial.columns]
+                    probe_df_initial['alias'] = station.split('.')[-1]
+                    probe_port_df_list.append(probe_df_initial)
+            if len(probe_port_df_list) > 0:
+                probe_port_df = pd.concat(probe_port_df_list)
+                timestamp_df = pd.merge(timestamp_df, probe_port_df, on='alias')
+                timestamp_df['Timestamp'] = timestamp
+                timestamp_df['Timestamp milliseconds epoch'] = t_to_millisec_epoch
+                timestamp_df['Timestamp seconds epoch'] = t_to_sec_epoch
+                timestamp_df['Duration elapsed'] = time_elapsed
+                timestamp_data.append(timestamp_df)
+                time.sleep(monitor_interval_ms)
+            else:
+                logger.info("port probe dataframe list is empty.")
+        if len(timestamp_data) > 0:
+            df = pd.concat(timestamp_data)
+            df = df.drop('alias', axis=1)
+            df.to_csv(str(report_file), index=False)
+            logger.critical("No csv generated. Check test input configuration (ssid, ssid-passwd, did stations get ip?)")
 
         # comparison to last report / report inputted
-        if compared_report is not None:
-            compared_df = self.compare_two_df(dataframe_one=self.file_to_df(report_file),
-                                              dataframe_two=self.file_to_df(compared_report))
+        if compared_report:
+            pandas_extensions.compare_two_df(dataframe_one=pandas_extensions.file_to_df(report_file),
+                                             dataframe_two=pandas_extensions.file_to_df(compared_report))
+            # TODO why is this exit here?
             exit(1)
             # append compared df to created one
             if output_format.lower() != 'csv':
-                self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
+                pandas_extensions.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
         else:
             if output_format.lower() != 'csv':
-                self.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
+                pandas_extensions.df_to_file(dataframe=pd.read_csv(report_file), output_f=output_format, save_path=report_file)
 
     def refresh_cx(self):
         for cx_name in self.created_cx.keys():
@@ -296,27 +389,40 @@ class L3CXProfile(LFCliBase):
                 "test_mgr": "ALL",
                 "cross_connect": cx_name
             }, debug_=self.debug)
+            # this is for a visual affect someone watching the screen, leave as print
             print(".", end='')
 
     def start_cx(self):
-        print("Starting CXs...")
+        logger.info("Starting CXs...")
         for cx_name in self.created_cx.keys():
             if self.debug:
-                print("cx-name: %s" % (cx_name))
+                logger.debug("cx-name: {cx_name}".format(cx_name=cx_name))
             self.json_post("/cli-json/set_cx_state", {
                 "test_mgr": "default_tm",
                 "cx_name": cx_name,
                 "cx_state": "RUNNING"
             }, debug_=self.debug)
+            # this is for a visual affect someone watching the screen, leave as print
             if self.debug:
                 print(".", end='')
         if self.debug:
             print("")
 
+    def quiesce_cx(self):
+        logger.info("Quiesce CXs...")
+        for cx_name in self.created_cx.keys():
+            # TODO see why quiesce_cx does not work 
+            # self.local_realm.quiesce_cx(cx_name)
+            self.local_realm.drain_stop_cx(cx_name)
+            # this is for a visual affect someone watching the screen, leave as print
+            print(".", end='')
+        print("")
+
     def stop_cx(self):
-        print("Stopping CXs...")
+        logger.info("Stopping CXs...")
         for cx_name in self.created_cx.keys():
             self.local_realm.stop_cx(cx_name)
+            # this is for a visual affect someone watching the screen, leave as print
             print(".", end='')
         print("")
 
@@ -324,17 +430,17 @@ class L3CXProfile(LFCliBase):
         self.local_realm.cleanup_cxe_prefix(self.name_prefix)
 
     def cleanup(self):
-        print("Cleaning up cxs and endpoints")
+        logger.info("Cleaning up cxs and endpoints")
         if len(self.created_cx) != 0:
             for cx_name in self.created_cx.keys():
                 if self.debug:
-                    print("Cleaning cx: %s" % (cx_name))
+                    logger.debug("Cleaning cx: {cx_name}".format(cx_name=cx_name))
                 self.local_realm.rm_cx(cx_name)
 
                 for side in range(len(self.created_cx[cx_name])):
                     ename = self.created_cx[cx_name][side]
                     if self.debug:
-                        print("Cleaning endpoint: %s" % (ename))
+                        logger.debug("Cleaning endpoint: {ename}".format(ename=ename))
                     self.local_realm.rm_endp(self.created_cx[cx_name][side])
 
         self.clean_cx_lists()
@@ -347,21 +453,25 @@ class L3CXProfile(LFCliBase):
         self.created_endp.clear()
 
     def create(self, endp_type, side_a, side_b, sleep_time=0.03, suppress_related_commands=None, debug_=False,
-               tos=None):
+               tos=None, timeout=300):
+        # Returns a 2-member array, list of cx, list of endp on success.
+        # If endpoints creation fails, returns False, False
+        # if Endpoints creation is OK, but CX creation fails, returns False, list of endp
         if self.debug:
             debug_ = True
+            logger.info('Start L3CXProfile.create')
 
         cx_post_data = []
         timer_post_data = []
         these_endp = []
         these_cx = []
 
-        # print(self.side_a_min_rate, self.side_a_max_rate)
-        # print(self.side_b_min_rate, self.side_b_max_rate)
         if (self.side_a_min_bps is None) \
                 or (self.side_a_max_bps is None) \
                 or (self.side_b_min_bps is None) \
                 or (self.side_b_max_bps is None):
+            logger.critical(
+                "side_a_min_bps, side_a_max_bps, side_b_min_bps, and side_b_max_bps must all be set to a value")
             raise ValueError(
                 "side_a_min_bps, side_a_max_bps, side_b_min_bps, and side_b_max_bps must all be set to a value")
 
@@ -374,8 +484,6 @@ class L3CXProfile(LFCliBase):
                 side_a_info = self.local_realm.name_to_eid(port_name, debug=debug_)
                 side_a_shelf = side_a_info[0]
                 side_a_resource = side_a_info[1]
-                if port_name.find('.') < 0:
-                    port_name = "%d.%s" % (side_a_info[1], port_name)
 
                 cx_name = "%s%s-%i" % (self.name_prefix, side_a_info[2], len(self.created_cx))
 
@@ -417,14 +525,11 @@ class L3CXProfile(LFCliBase):
                     "multi_conn": mconn_b,
                 }
 
-                # print("1: endp-side-b: ", endp_side_b)
-
                 url = "/cli-json/add_endp"
                 self.local_realm.json_post(url, endp_side_a, debug_=debug_,
                                            suppress_related_commands_=suppress_related_commands)
                 self.local_realm.json_post(url, endp_side_b, debug_=debug_,
                                            suppress_related_commands_=suppress_related_commands)
-                # print("napping %f sec"%sleep_time)
                 time.sleep(sleep_time)
 
                 url = "cli-json/set_endp_flag"
@@ -448,7 +553,7 @@ class L3CXProfile(LFCliBase):
                     self.local_realm.json_post(url, data, debug_=debug_,
                                                suppress_related_commands_=suppress_related_commands)
 
-                if tos != None:
+                if tos:
                     self.local_realm.set_endp_tos(endp_a_name, tos)
                     self.local_realm.set_endp_tos(endp_b_name, tos)
 
@@ -458,7 +563,6 @@ class L3CXProfile(LFCliBase):
                     "tx_endp": endp_a_name,
                     "rx_endp": endp_b_name,
                 }
-                # pprint(data)
                 cx_post_data.append(data)
                 timer_post_data.append({
                     "test_mgr": "default_tm",
@@ -470,14 +574,12 @@ class L3CXProfile(LFCliBase):
             side_a_info = self.local_realm.name_to_eid(side_a, debug=debug_)
             side_a_shelf = side_a_info[0]
             side_a_resource = side_a_info[1]
-            # side_a_name = side_a_info[2]
 
             for port_name in side_b:
-                print(side_b)
+                logger.info(side_b)
                 side_b_info = self.local_realm.name_to_eid(port_name, debug=debug_)
                 side_b_shelf = side_b_info[0]
                 side_b_resource = side_b_info[1]
-                side_b_name = side_b_info[2]
 
                 cx_name = "%s%s-%i" % (self.name_prefix, port_name, len(self.created_cx))
                 endp_a_name = cx_name + "-A"
@@ -518,14 +620,11 @@ class L3CXProfile(LFCliBase):
                     "multi_conn": mconn_b,
                 }
 
-                # print("2: endp-side-b: ", endp_side_b)
-
                 url = "/cli-json/add_endp"
                 self.local_realm.json_post(url, endp_side_a, debug_=debug_,
                                            suppress_related_commands_=suppress_related_commands)
                 self.local_realm.json_post(url, endp_side_b, debug_=debug_,
                                            suppress_related_commands_=suppress_related_commands)
-                # print("napping %f sec" %sleep_time )
                 time.sleep(sleep_time)
 
                 url = "cli-json/set_endp_flag"
@@ -545,7 +644,6 @@ class L3CXProfile(LFCliBase):
                 }
                 self.local_realm.json_post(url, data, debug_=debug_,
                                            suppress_related_commands_=suppress_related_commands)
-                # print("CXNAME451: %s" % cx_name)
                 data = {
                     "alias": cx_name,
                     "test_mgr": "default_tm",
@@ -559,20 +657,100 @@ class L3CXProfile(LFCliBase):
                     "milliseconds": self.report_timer
                 })
         else:
+            logger.critical(
+                "side_a or side_b must be of type list but not both: side_a is type {side_a} side_b is type {side_b}".format(
+                    side_a=type(side_a), side_b=type(side_b)))
+
             raise ValueError(
                 "side_a or side_b must be of type list but not both: side_a is type %s side_b is type %s" % (
                     type(side_a), type(side_b)))
-        print("wait_until_endps_appear these_endp: {} debug_ {}".format(these_endp, debug_))
-        self.local_realm.wait_until_endps_appear(these_endp, debug=debug_)
+        if debug_:
+            logger.debug("wait_until_endps_appear these_endp: {these_endp} debug_ {debug_}".format(
+                these_endp=these_endp, debug_=debug_))
+        rv = self.local_realm.wait_until_endps_appear(these_endp, debug=debug_, timeout=timeout)
+        if not rv:
+            logger.error("L3CXProfile::create, Could not create/find endpoints")
+            return False, False
 
         for data in cx_post_data:
             url = "/cli-json/add_cx"
             self.local_realm.json_post(url, data, debug_=debug_, suppress_related_commands_=suppress_related_commands)
             time.sleep(0.01)
 
-        self.local_realm.wait_until_cxs_appear(these_cx, debug=debug_)
+        rv = self.local_realm.wait_until_cxs_appear(these_cx, debug=debug_, timeout=timeout)
+        if not rv:
+            logger.error("L3CXProfile::create, Could not create/find connections.")
+            return False, these_endp
 
         return these_cx, these_endp
 
-    def to_string(self):
-        pprint.pprint(self)
+    def monitor_without_disturbing_other_monitor(self,
+                duration_sec=60,
+                monitor_interval_ms=1,
+                sta_list=None,
+                layer3_cols=None,
+                port_mgr_cols=None,
+                created_cx=None,
+                script_name=None,
+                arguments=None,
+                compared_report=None,
+                debug=False):
+        if duration_sec:
+            duration_sec = self.parse_time(duration_sec).seconds
+        else:
+            logger.critical("L3CXProfile::monitor wants duration_sec > 1 second")
+            raise ValueError("L3CXProfile::monitor wants duration_sec > 1 second")
+        if duration_sec <= monitor_interval_ms:
+            logger.critical("L3CXProfile::monitor wants duration_sec > monitor_interval")
+            raise ValueError("L3CXProfile::monitor wants duration_sec > monitor_interval")
+        if created_cx is None:
+            logger.critical("Monitor needs a list of Layer 3 connections")
+            raise ValueError("Monitor needs a list of Layer 3 connections")
+        if (monitor_interval_ms is None) or (monitor_interval_ms < 1):
+            logger.critical("L3CXProfile::monitor wants monitor_interval >= 1 second")
+            raise ValueError("L3CXProfile::monitor wants monitor_interval >= 1 second")
+        if layer3_cols is None:
+            logger.critical("L3CXProfile::monitor wants a list of column names to monitor")
+            raise ValueError("L3CXProfile::monitor wants a list of column names to monitor")
+
+
+
+        # ================== Step 1, set column names and header row
+        layer3_cols = [self.replace_special_char(x) for x in layer3_cols]
+        layer3_fields = ",".join(layer3_cols)
+        default_cols = ['Timestamp', 'Timestamp milliseconds epoch', 'Timestamp seconds epoch', 'Duration elapsed']
+        default_cols.extend(layer3_cols)
+        # append alias to port_mgr_cols if not present needed later
+        if port_mgr_cols:
+            if 'alias' not in port_mgr_cols:
+                port_mgr_cols.append('alias')
+
+        if port_mgr_cols:
+            default_cols.extend(port_mgr_cols)
+        header_row = default_cols
+
+        if port_mgr_cols:
+            port_mgr_cols = [self.replace_special_char(x) for x in port_mgr_cols]
+            port_mgr_cols_labelled = []
+            for col_name in port_mgr_cols:
+                port_mgr_cols_labelled.append("port mgr - " + col_name)
+
+            port_mgr_fields = ",".join(port_mgr_cols)
+            header_row.extend(port_mgr_cols_labelled)
+        # create sys info file
+        systeminfo = self.json_get('/')
+        sysinfo = [str("LANforge GUI Build: " + systeminfo['VersionInfo']['BuildVersion']),
+                   str("Script Name: " + script_name), str("Argument input: " + str(arguments))]
+
+
+        # ================== Step 2, monitor columns
+        start_time = datetime.datetime.now()
+        end_time = start_time + datetime.timedelta(seconds=duration_sec)
+
+        # wait 10 seconds to get proper port data
+        time.sleep(10)
+        print("current time: ",datetime.datetime.now())
+        print("Expected End time: ",end_time)
+        while datetime.datetime.now() < end_time:
+            continue
+        print("End time: ",end_time)

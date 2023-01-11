@@ -1,11 +1,20 @@
-
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-from LANforge import add_dut
-import pprint
+import sys
+import os
+import importlib
 from pprint import pprint
-import time
+from pprint import pformat
 import base64
+import logging
+
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+add_dut = importlib.import_module("py-json.LANforge.add_dut")
+
+logger = logging.getLogger(__name__)
 
 
 class DUTProfile(LFCliBase):
@@ -45,27 +54,29 @@ class DUTProfile(LFCliBase):
         self.append = []
 
     def set_param(self, name, value):
-        if (name in self.__dict__):
+        if name in self.__dict__:
             self.__dict__[name] = value
 
-    def create(self, name=None, param_=None, flags=None, flags_mask=None, notes=None):
+    def create(self, name=None, flags=None, flags_mask=None):
         data = {}
         if (name is not None) and (name != ""):
             data["name"] = name
         elif (self.name is not None) and (self.name != ""):
             data["name"] = self.name
         else:
+            logger.critical("cannot create/update DUT record lacking a name")
             raise ValueError("cannot create/update DUT record lacking a name")
 
         for param in add_dut.dut_params:
-            if (param.name in self.__dict__):
+            if param.name in self.__dict__:
                 if (self.__dict__[param.name] is not None) \
                         and (self.__dict__[param.name] != "NA"):
                     data[param.name] = self.__dict__[param.name]
             else:
-                print("---------------------------------------------------------")
-                pprint(self.__dict__[param.name])
-                print("---------------------------------------------------------")
+                logger.error("---------------------------------------------------------")
+                logger.error(pformat(self.__dict__[param.name]))
+                logger.error("---------------------------------------------------------")
+                logger.critical("parameter %s not in dut_profile" % param)
                 raise ValueError("parameter %s not in dut_profile" % param)
 
         if (flags is not None) and (int(flags) > -1):
@@ -80,11 +91,11 @@ class DUTProfile(LFCliBase):
 
         url = "/cli-json/add_dut"
         if self.debug:
-            print("---- DATA -----------------------------------------------")
-            pprint(data)
-            pprint(self.notes)
-            pprint(self.append)
-            print("---------------------------------------------------------")
+            logger.debug("---- DATA -----------------------------------------------")
+            logger.debug(pformat(data))
+            logger.debug(pformat(self.notes))
+            logger.debug(pformat(self.append))
+            logger.debug("---------------------------------------------------------")
         self.json_post(url, data, debug_=self.debug)
 
         if (self.notes is not None) and (len(self.notes) > 0):
@@ -92,27 +103,25 @@ class DUTProfile(LFCliBase):
                 "dut": self.name,
                 "text": "[BLANK]"
             }, self.debug)
-            notebytes = None
             for line in self.notes:
                 notebytes = base64.b64encode(line.encode('ascii'))
                 if self.debug:
-                    print("------ NOTES ---------------------------------------------------")
-                    pprint(self.notes)
-                    pprint(str(notebytes))
-                    print("---------------------------------------------------------")
+                    logger.debug("------ NOTES ---------------------------------------------------")
+                    logger.debug(pformat(self.notes))
+                    logger.debug(pformat(str(notebytes)))
+                    logger.debug("---------------------------------------------------------")
                 self.json_post("/cli-json/add_dut_notes", {
                     "dut": self.name,
                     "text-64": notebytes.decode('ascii')
                 }, self.debug)
         if (self.append is not None) and (len(self.append) > 0):
-            notebytes = None
             for line in self.append:
                 notebytes = base64.b64encode(line.encode('ascii'))
                 if self.debug:
-                    print("----- APPEND ----------------------------------------------------")
-                    pprint(line)
-                    pprint(str(notebytes))
-                    print("---------------------------------------------------------")
+                    logger.debug("----- APPEND ----------------------------------------------------")
+                    logger.debug(pformat(line))
+                    logger.debug(pformat(str(notebytes)))
+                    logger.debug("---------------------------------------------------------")
                 self.json_post("/cli-json/add_dut_notes", {
                     "dut": self.name,
                     "text-64": notebytes.decode('ascii')

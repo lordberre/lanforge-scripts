@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 Note: To Run this script gui should be opened with
 
@@ -244,7 +243,7 @@ show_log: 0
 port_sorting: 0
 kpi_id: WiFi Capacity
 bg: 0xE0ECF8
-test_rig: 
+test_rig:
 show_scan: 1
 auto_helper: 1
 skip_2: 0
@@ -263,7 +262,7 @@ dl_rate: 1000000000
 ul_rate_sel: Total Upload Rate:
 ul_rate: 10000000
 prcnt_tcp: 100000
-l4_endp: 
+l4_endp:
 pdu_sz: -1
 mss_sel: 1
 sock_buffer: 0
@@ -303,30 +302,36 @@ show_4way: 1
 show_latency: 1
 
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
-import json
-from os import path
+import logging
+
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_test_manager import cv_test
-from cv_test_manager import *
-from LANforge import LFUtils
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cv_test = cv_test_manager.cv_test
+cv_add_base_parser = cv_test_manager.cv_add_base_parser
+cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
+lf_logger_config = importlib.import_module("py-scripts.lf_logger_config")
+
+logger = logging.getLogger(__name__)
 
 
 class WiFiCapacityTest(cv_test):
     def __init__(self,
                  lfclient_host="localhost",
                  lf_port=8080,
+                 ssh_port=22,
                  lf_user="lanforge",
                  lf_password="lanforge",
                  instance_name="wct_instance",
@@ -347,20 +352,29 @@ class WiFiCapacityTest(cv_test):
                  security="open",
                  paswd="[BLANK]",
                  ssid="",
-                 enables=[],
-                 disables=[],
-                 raw_lines=[],
+                 enables=None,
+                 disables=None,
+                 raw_lines=None,
                  raw_lines_file="",
-                 sets=[],
+                 sets=None,
                  influx_host="localhost",
                  influx_port=8086,
                  report_dir="",
                  graph_groups=None,
                  test_rig="",
+                 test_tag="",
                  local_lf_report_dir=""
                  ):
         super().__init__(lfclient_host=lfclient_host, lfclient_port=lf_port)
 
+        if enables is None:
+            enables = []
+        if disables is None:
+            disables = []
+        if raw_lines is None:
+            raw_lines = []
+        if sets is None:
+            sets = []
         self.lfclient_host = lfclient_host
         self.lf_port = lf_port
         self.lf_user = lf_user
@@ -384,6 +398,7 @@ class WiFiCapacityTest(cv_test):
         self.security = security
         self.ssid = ssid
         self.paswd = paswd
+        self.ssh_port = ssh_port
         self.radio = radio
         self.enables = enables
         self.disables = disables
@@ -395,6 +410,7 @@ class WiFiCapacityTest(cv_test):
         self.report_dir = report_dir
         self.graph_groups = graph_groups
         self.test_rig = test_rig
+        self.test_tag = test_tag
         self.local_lf_report_dir = local_lf_report_dir
 
     def setup(self):
@@ -405,7 +421,7 @@ class WiFiCapacityTest(cv_test):
             self.station_profile.create(radio=self.radio, sta_names_=sta, debug=self.debug)
             self.station_profile.admin_up()
             self.wait_for_ip(station_list=sta)
-            print("stations created")
+            logger.info("stations created")
 
     def run(self):
         self.sync_cv()
@@ -453,6 +469,8 @@ class WiFiCapacityTest(cv_test):
             cfg_options.append("dl_rate: " + self.download_rate)
         if self.test_rig != "":
             cfg_options.append("test_rig: " + self.test_rig)
+        if self.test_tag != "":
+            cfg_options.append("test_tag: " + self.test_tag)
 
         cfg_options.append("save_csv: 1")
 
@@ -473,7 +491,7 @@ class WiFiCapacityTest(cv_test):
         self.create_and_run_test(self.load_old_cfg, self.test_name, self.instance_name,
                                  self.config_name, self.sets,
                                  self.pull_report, self.lfclient_host, self.lf_user, self.lf_password,
-                                 cv_cmds, graph_groups_file=self.graph_groups, local_lf_report_dir=self.local_lf_report_dir)
+                                 cv_cmds, ssh_port=self.ssh_port, graph_groups_file=self.graph_groups, local_lf_report_dir=self.local_lf_report_dir)
 
         self.rm_text_blob(self.config_name, blob_test)  # To delete old config with same name
 
@@ -482,12 +500,14 @@ class WiFiCapacityTest(cv_test):
 
 def main():
     parser = argparse.ArgumentParser(
+        prog="lf_wifi_capacity_test.py",
+        formatter_class=argparse.RawTextHelpFormatter,
         description="""
         ./lf_wifi_capacity_test.py --mgr localhost --port 8080 --lf_user lanforge --lf_password lanforge \
              --instance_name wct_instance --config_name wifi_config --upstream 1.1.eth1 --batch_size 1 --loop_iter 1 \
              --protocol UDP-IPv4 --duration 6000 --pull_report --stations 1.1.sta0000,1.1.sta0001 \
              --create_stations --radio wiphy0 --ssid test-ssid --security open --paswd [BLANK] \
-             --test_rig Testbed-01 \
+             --test_rig Testbed-01 -test_tag TAG\
              --influx_host c7-graphana --influx_port 8086 --influx_org Candela \
              --influx_token=-u_Wd-L8o992701QF0c5UmqEp7w7Z7YOMaWLxOMgmHfATJGnQbbmYyNxHBR9PgD6taM_tcxqJl6U8DjU1xINFQ== \
              --influx_bucket ben \
@@ -527,11 +547,21 @@ def main():
     parser.add_argument("--report_dir", default="")
     parser.add_argument("--scenario", default="")
     parser.add_argument("--graph_groups", help="File to save graph groups to", default=None)
-    parser.add_argument("--local_lf_report_dir", help="--local_lf_report_dir <where to pull reports to>  default '' put where dataplane script run from",default="")
+    parser.add_argument("--local_lf_report_dir", help="--local_lf_report_dir <where to pull reports to>  default '' put where dataplane script run from", default="")
+    parser.add_argument("--lf_logger_config_json", help="--lf_logger_config_json <json file> , json configuration of logger")
+
 
     args = parser.parse_args()
 
     cv_base_adjust_parser(args)
+
+    # set up logger
+    logger_config = lf_logger_config.lf_logger_config()
+
+    # lf_logger_config_json will take presidence to changing debug levels
+    if args.lf_logger_config_json:
+        logger_config.lf_logger_config_json = args.lf_logger_config_json
+        logger_config.load_lf_logger_config()
 
     WFC_Test = WiFiCapacityTest(lfclient_host=args.mgr,
                                 lf_port=args.port,
@@ -562,6 +592,7 @@ def main():
                                 sets=args.set,
                                 graph_groups=args.graph_groups,
                                 test_rig=args.test_rig,
+                                test_tag=args.test_tag,
                                 local_lf_report_dir=args.local_lf_report_dir
                                 )
     WFC_Test.setup()

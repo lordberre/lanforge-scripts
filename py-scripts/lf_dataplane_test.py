@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 Note: To Run this script gui should be opened with
 
@@ -95,23 +94,23 @@ tos: 0
 loop_iterations: 1
 
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
 import json
-from os import path
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_test_manager import cv_test
-from cv_test_manager import *
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cv_test = cv_test_manager.cv_test
+cv_add_base_parser = cv_test_manager.cv_add_base_parser
+cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
 
 
 class DataplaneTest(cv_test):
@@ -132,17 +131,25 @@ class DataplaneTest(cv_test):
                  duration="15s",
                  station="1.1.sta01500",
                  dut="NA",
-                 enables=[],
-                 disables=[],
-                 raw_lines=[],
+                 enables=None,
+                 disables=None,
+                 raw_lines=None,
                  raw_lines_file="",
-                 sets=[],
+                 sets=None,
                  graph_groups=None,
-                 report_dir="",
-                 test_rig=""
+                 test_rig="",
+                 test_tag=""
                  ):
         super().__init__(lfclient_host=lf_host, lfclient_port=lf_port)
 
+        if enables is None:
+            enables = []
+        if disables is None:
+            disables = []
+        if raw_lines is None:
+            raw_lines = []
+        if sets is None:
+            sets = []
         self.lf_host = lf_host
         self.lf_port = lf_port
         self.lf_user = lf_user
@@ -164,10 +171,10 @@ class DataplaneTest(cv_test):
         self.raw_lines_file = raw_lines_file
         self.sets = sets
         self.graph_groups = graph_groups
-        self.report_dir = report_dir
         self.ssh_port = ssh_port
         self.local_lf_report_dir = local_lf_report_dir
         self.test_rig = test_rig
+        self.test_tag = test_tag
 
     def setup(self):
         # Nothing to do at this time.
@@ -180,14 +187,16 @@ class DataplaneTest(cv_test):
 
         blob_test = "dataplane-test-latest-"
 
-        self.rm_text_blob(self.config_name, blob_test)  # To delete old config with same name
+        # To delete old config with same name
+        self.rm_text_blob(self.config_name, blob_test)
         self.show_text_blob(None, None, False)
 
         # Test related settings
         cfg_options = []
 
         ### HERE###
-        self.apply_cfg_options(cfg_options, self.enables, self.disables, self.raw_lines, self.raw_lines_file)
+        self.apply_cfg_options(cfg_options, self.enables,
+                               self.disables, self.raw_lines, self.raw_lines_file)
 
         # cmd line args take precedence and so come last in the cfg array.
         if self.upstream != "":
@@ -204,6 +213,8 @@ class DataplaneTest(cv_test):
             cfg_options.append("selected_dut: " + self.dut)
         if self.test_rig != "":
             cfg_options.append("test_rig: " + self.test_rig)
+        if self.test_tag != "":
+            cfg_options.append("test_tag: " + self.test_tag)
 
         # We deleted the scenario earlier, now re-build new one line at a time.
 
@@ -215,11 +226,15 @@ class DataplaneTest(cv_test):
                                  self.pull_report, self.lf_host, self.lf_user, self.lf_password,
                                  cv_cmds, ssh_port=self.ssh_port, local_lf_report_dir=self.local_lf_report_dir,
                                  graph_groups_file=self.graph_groups)
-        self.rm_text_blob(self.config_name, blob_test)  # To delete old config with same name
+        # To delete old config with same name
+        self.rm_text_blob(self.config_name, blob_test)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="""
+    parser = argparse.ArgumentParser(
+        prog='lf_dataplane_test',
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="""
 
     IMPORTANT: Start lanforge with socket 3990 :  ./lfclient.bash -cli-socket 3990
         lfclient.bash is located in the LANforgeGUI_X.X.X directory
@@ -251,45 +266,47 @@ def main():
 
     Sample <name>.json between using eth1 and eth2 
     {
-	    "mgr":"192.168.0.101",
-	    "port":"8080",
-	    "lf_user":"lanforge",
-	    "lf_password":"lanforge",
-	    "instance_name":"dataplane-instance",
-	    "config_name":"test_con",
-	    "upstream":"1.1.eth1",
-	    "dut":"asus_5g",
-	    "duration":"15s",
-	    "station":"1.1.eth2",
-	    "download_speed":"85%",
-	    "upload_speed":"0",	
-	    "raw_line":  ["pkts: Custom;60;MTU", "cust_pkt_sz: 88 1200", "directions: DUT Transmit", "traffic_types: UDP", "bandw_options: 20", "spatial_streams: 1"]
+        "mgr":"192.168.0.101",
+        "port":"8080",
+        "lf_user":"lanforge",
+        "lf_password":"lanforge",
+        "instance_name":"dataplane-instance",
+        "config_name":"test_con",
+        "upstream":"1.1.eth1",
+        "dut":"asus_5g",
+        "duration":"15s",
+        "station":"1.1.eth2",
+        "download_speed":"85%",
+        "upload_speed":"0",	
+        "raw_line":  ["pkts: Custom;60;MTU", "cust_pkt_sz: 88 1200", "directions: DUT Transmit", "traffic_types: UDP", "bandw_options: 20", "spatial_streams: 1"]
     }
-			
+        
     Sample <name>.json between using eth1 and station 1.1.sta0002
     {
-	    "mgr":"192.168.0.101",
-	    "port":"8080",
-	    "lf_user":"lanforge",
-	    "lf_password":"lanforge",
-	    "instance_name":"dataplane-instance",
-	    "config_name":"test_con",
-	    "upstream":"1.1.eth1",
-	    "dut":"asus_5g",
-	    "duration":"15s",
-	    "station":"1.1.sta0002",
-	    "download_speed":"85%",
-	    "upload_speed":"0",	
-	    "raw_line":  ["pkts: Custom;60;MTU", "cust_pkt_sz: 88 1200", "directions: DUT Transmit", "traffic_types: UDP", "bandw_options: 20", "spatial_streams: 1"]
-    }
+        "mgr":"192.168.0.101",
+        "port":"8080",
+        "lf_user":"lanforge",
+        "lf_password":"lanforge",
+        "instance_name":"dataplane-instance",
+        "config_name":"test_con",
+        "upstream":"1.1.eth1",
+        "dut":"asus_5g",
+        "duration":"15s",
+        "station":"1.1.sta0002",
+        "download_speed":"85%",
+        "upload_speed":"0",	
+        "raw_line":  ["pkts: Custom;60;MTU", "cust_pkt_sz: 88 1200", "directions: DUT Transmit", "traffic_types: UDP", "bandw_options: 20", "spatial_streams: 1"]
+}
 
       """
-                                     )
+    )
 
     cv_add_base_parser(parser)  # see cv_test_manager.py
 
-    parser.add_argument('--json', help="--json <config.json> json input file", default="")
-    parser.add_argument('--influx_json', help="--influx_json <influx_config.json> influx config json input file", default="")
+    parser.add_argument(
+        '--json', help="--json <config.json> json input file", default="")
+    parser.add_argument(
+        '--influx_json', help="--influx_json <influx_config.json> influx config json input file", default="")
     parser.add_argument("-u", "--upstream", type=str, default="",
                         help="Upstream port for wifi capacity test ex. 1.1.eth2")
     parser.add_argument("--station", type=str, default="",
@@ -303,21 +320,26 @@ def main():
                         help="Specify requested upload speed.  Percentage of theoretical is also supported.  Default: 0")
     parser.add_argument("--duration", default="",
                         help="Specify duration of each traffic run")
-    parser.add_argument("--graph_groups", help="File to save graph_groups to", default=None)
-    parser.add_argument("--report_dir", default="")
-    parser.add_argument("--local_lf_report_dir", help="--local_lf_report_dir <where to pull reports to>  default '' put where dataplane script run from",default="")
+    parser.add_argument(
+        "--graph_groups", help="File to save graph_groups to", default=None)
+    parser.add_argument("--local_lf_report_dir",
+                        help="--local_lf_report_dir <where to pull reports to>  default '' put where dataplane script run from",
+                        default="")
 
+    # TODO:  Add debug and log-level support, and propagate as needed.
+    # TODO:  Add ability to pull from a machine that is not running the
+    #   GUI, for instance when GUI is running locally against a remote LANforge system.
 
     args = parser.parse_args()
 
     # use json config file
-    if args.json != "":
-        try:
+    if args.json:
+        if os.path.exists(args.json):
             with open(args.json, 'r') as json_config:
                 json_data = json.load(json_config)
-        except:
-            print("Error reading {}".format(args.json))
-        # json configuation takes presidence to command line 
+        else:
+            return FileNotFoundError("Error reading {}".format(args.json))
+        # json configuation takes presidence to command line
         if "mgr" in json_data:
             args.mgr = json_data["mgr"]
         if "port" in json_data:
@@ -350,15 +372,14 @@ def main():
             json_data_tmp = [[x] for x in json_data["raw_line"]]
             args.raw_line = json_data_tmp
 
-
     # use influx json config file
-    if args.influx_json != "":
-        try:
-            with open(args.influx_json, 'r') as influx_json_config:
-                influx_json_data = json.load(influx_json_config)
-        except:
-            print("Error reading {}".format(args.influx_json))
-        # json configuation takes presidence to command line 
+    if args.influx_json:
+        if os.path.exists(args.influx_json):
+            with open(args.influx_json, 'r') as json_config:
+                influx_json_data = json.load(json_config)
+        else:
+            return FileNotFoundError("Error reading {}".format(args.influx_json))
+        # json configuation takes presidence to command line
         # influx DB configuration
         if "influx_host" in influx_json_data:
             args.influx_host = influx_json_data["influx_host"]
@@ -373,27 +394,27 @@ def main():
 
     cv_base_adjust_parser(args)
 
-    CV_Test = DataplaneTest(lf_host = args.mgr,
-                            lf_port = args.port,
-                            lf_user = args.lf_user,
-                            lf_password = args.lf_password,
-                            instance_name = args.instance_name,
-                            config_name = args.config_name,
-                            upstream = args.upstream,
-                            pull_report = args.pull_report,
-                            local_lf_report_dir = args.local_lf_report_dir,
-                            load_old_cfg = args.load_old_cfg,
-                            download_speed = args.download_speed,
-                            upload_speed = args.upload_speed,
-                            duration = args.duration,
-                            dut = args.dut,
-                            station = args.station,
-                            enables = args.enable,
-                            disables = args.disable,
-                            raw_lines = args.raw_line,
-                            raw_lines_file = args.raw_lines_file,
-                            sets = args.set,
-                            graph_groups = args.graph_groups,
+    CV_Test = DataplaneTest(lf_host=args.mgr,
+                            lf_port=args.port,
+                            lf_user=args.lf_user,
+                            lf_password=args.lf_password,
+                            instance_name=args.instance_name,
+                            config_name=args.config_name,
+                            upstream=args.upstream,
+                            pull_report=args.pull_report,
+                            local_lf_report_dir=args.local_lf_report_dir,
+                            load_old_cfg=args.load_old_cfg,
+                            download_speed=args.download_speed,
+                            upload_speed=args.upload_speed,
+                            duration=args.duration,
+                            dut=args.dut,
+                            station=args.station,
+                            enables=args.enable,
+                            disables=args.disable,
+                            raw_lines=args.raw_line,
+                            raw_lines_file=args.raw_lines_file,
+                            sets=args.set,
+                            graph_groups=args.graph_groups,
                             test_rig=args.test_rig
                             )
     CV_Test.setup()
@@ -401,6 +422,10 @@ def main():
 
     CV_Test.check_influx_kpi(args)
 
+    if CV_Test.passes():
+        CV_Test.exit_success()
+    else:
+        CV_Test.exit_fail()
 
 if __name__ == "__main__":
     main()

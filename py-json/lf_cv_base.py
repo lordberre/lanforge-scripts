@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 Base Class to be used for Chamber View Tests
 
@@ -8,10 +7,16 @@ Methods:
     2.) Remove a CV Profile
     3.) Add a DUT
     4.) Show a CV Profile
-
 """
+import sys
+import os
+import importlib
 
-from LANforge.lfcli_base import LFCliBase
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
 
 
 class ChamberViewBase(LFCliBase):
@@ -22,15 +27,15 @@ class ChamberViewBase(LFCliBase):
     def remove_text_blobs(self):
         pass
 
-    def add_text_blobs(self, type="", name="", data="", debug=False):
-        data = {'type': type,
+    def add_text_blobs(self, text_type="", name="", data="", debug=False):
+        data = {'type': text_type,
                 'name': name,
                 "text": data
                 }
         self.json_post("/cli-json/add_text_blob/", data, debug_=debug)
 
-    def get_text_blob(self, type="", name="", debug=False):
-        data = {'type': type,
+    def get_text_blob(self, text_type="", name="", debug=False):
+        data = {'type': text_type,
                 'name': name,
                 }
         return self.json_post("/cli-json/show_text_blob/", data, debug_=debug)

@@ -1,70 +1,95 @@
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-from LANforge import LFRequest
-from LANforge import LFUtils
+import sys
+import os
+import importlib
 import time
+import logging
+
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+LFRequest = importlib.import_module("py-json.LANforge.LFRequest")
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+logger = logging.getLogger(__name__)
 
 
 class ATTENUATORProfile(LFCliBase):
-    def __init__(self, lfclient_host, lfclient_port, local_realm, debug_=False):
+    def __init__(self, lfclient_host, lfclient_port, debug_=False):
         super().__init__(lfclient_host, lfclient_port, debug_)
-        self.local_realm = local_realm
         self.lfclient_host = lfclient_host
         self.COMMANDS = ["show_attenuators", "set_attenuator"]
-        self.atten_serno = ""
-        self.atten_idx = ""
-        self.atten_val = ""
+        self.atten_serno = None
+        self.atten_idx = None
+        self.atten_val = None
         self.atten_data = {
             "shelf": 1,
             "resource": 1,
-            "serno": None,
-            "atten_idx": None,
-            "val": None,
+            "serno": self.atten_serno,
+            "atten_idx": self.atten_idx,
+            "val": self.atten_val,
             "mode": None,
             "pulse_width_us5": None,
             "pulse_interval_ms": None,
             "pulse_count": None,
             "pulse_time_ms": None
         }
+        self.debug = debug_
 
     def set_command_param(self, command_name, param_name, param_value):
         # we have to check what the param name is
-        if (command_name is None) or (command_name == ""):
-            return
-        if (param_name is None) or (param_name == ""):
-            return
+        if not command_name:
+            raise ValueError("Command Name is required")
+        if not param_name:
+            raise ValueError("Paramater is required")
         if command_name not in self.COMMANDS:
             raise ValueError("Command name name [%s] not defined in %s" % (command_name, self.COMMANDS))
         if command_name == "set_attenuator":
             self.atten_data[param_name] = param_value
 
-    def show(self, debug=False):
-        print("Show Attenuators.........")
+    def show(self):
+        logger.info("Show Attenuators.........")
         response = self.json_get("/attenuators/")
         time.sleep(0.01)
         if response is None:
-            print(response)
+            logger.critical(response)
+            logger.critical("Cannot find any endpoints")
             raise ValueError("Cannot find any endpoints")
-        else:
-            attenuator_resp = response["attenuator"]
-            for key, val in attenuator_resp.items():
-                if key == "entity id":
-                    serial_num = val.split(".")
-                    print("Serial-num : %s" % serial_num[-1])
-                print("%s : %s" % (key, val))
-        print("\n")
+        elif 'attenuator' or 'attenuators' in response.keys():
+            try:
+                attenuator_resp = response["attenuators"]
+            except KeyError:
+                attenuator_resp = [response["attenuator"]]
+            for attenuator in attenuator_resp:
+                for key, val in attenuator.items():
+                    if key == "entity id":
+                        serial_num = val.split(".")
+                        logger.info("Serial-num : %s" % serial_num[-1])
+                    logger.info("%s : %s" % (key, val))
 
-    def create(self, debug=False):
-        if len(self.atten_serno) == 0 or len(self.atten_idx) == 0 or len(self.atten_val) == 0:
-            print("ERROR:  Must specify atten_serno, atten_idx, and atten_val when setting attenuator.\n")
-        print("Creating Attenuator...")
+        else:
+            logger.critical('No attenuators in response')
+            raise ValueError('No attenuators in response')
+
+    def create(self):
+        if self.atten_idx == 'all':
+            self.atten_idx = "all"
+        else:
+            if int(self.atten_idx) > 7 and self.atten_idx != "all":
+                logger.critical("Attenuation idx value must be 7 or less")
+                raise ValueError("Attenuation idx value must be 7 or less")
+        if int(self.atten_val) > 955:
+            logger.critical("Attenuation ddB value must be 955 or less")
+            raise ValueError("Attenuation ddB value must be 955 or less")
+
+        logger.info("Setting Attenuator...")
         self.set_command_param("set_attenuator", "serno", self.atten_serno)
         self.set_command_param("set_attenuator", "atten_idx", self.atten_idx)
         self.set_command_param("set_attenuator", "val", self.atten_val)
-        set_attenuators = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_attenuator", debug_=debug)
+        set_attenuators = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_attenuator", debug_=self.debug)
         set_attenuators.addPostData(self.atten_data)
         time.sleep(0.01)
-        json_response = set_attenuators.jsonPost(debug)
+        set_attenuators.jsonPost(self.debug)
         time.sleep(10)
         print("\n")
-

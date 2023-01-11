@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
-
 import sys
 import os
+import importlib
 import argparse
+import json
+import random
+import string
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-dashboard'))
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from LANforge.lfcli_base import LFCliBase
-import json
-from influx2 import RecordInflux
-from csv_to_influx import CSVtoInflux, influx_add_parser_args
-from grafana_profile import UseGrafana
-import random
-import string
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+csv_to_influx = importlib.import_module("py-scripts.csv_to_influx")
+CSVtoInflux = csv_to_influx.CSVtoInflux
+influx_add_parser_args = csv_to_influx.influx_add_parser_args
+grafana_profile = importlib.import_module("py-scripts.grafana_profile")
+UseGrafana = grafana_profile.UseGrafana
+influx = importlib.import_module("py-scripts.influx_utils")
+RecordInflux = influx.RecordInflux
+InfluxRequest = importlib.import_module("py-dashboard.InfluxRequest")
+influx_add_parser_args = InfluxRequest.influx_add_parser_args
+
 
 class data_to_grafana(LFCliBase):
     def __init__(self,
@@ -29,11 +35,11 @@ class data_to_grafana(LFCliBase):
         self.script = _script
         self.panel_name = _panel_name
         pass
-    
+
     @property
     def json_parser(self):
-        options = string.ascii_lowercase+string.ascii_uppercase+string.digits
-        uid = ''.join(random.choice(options) for i in range(9))
+        options = string.ascii_lowercase + string.ascii_uppercase + string.digits
+        uid = ''.join(random.choice(options) for _ in range(9))
         print(uid)
         json_dict = {
             "annotations": {
@@ -120,7 +126,9 @@ class data_to_grafana(LFCliBase):
                             "ignoreUnknown": False,
                             "orderByTime": "ASC",
                             "policy": "default",
-                            "query": ("from(bucket: \" %s \")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"script\"] == \" %s\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: False)\n  |> yield(name: \"mean\")\n  " % self.bucket, self.script ),
+                            "query": (
+                                "from(bucket: \" %s \")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"script\"] == \" %s\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: False)\n  |> yield(name: \"mean\")\n  " % self.bucket,
+                                self.script),
                             "refId": "A",
                             "resultFormat": "time_series",
                             "schema": [],
@@ -257,6 +265,7 @@ def main():
     GrafanaDB.create_custom_dashboard(scripts=[scriptname],
                                       title=args.panel_name,
                                       bucket=args.influx_bucket)
+
 
 if __name__ == "__main__":
     main()

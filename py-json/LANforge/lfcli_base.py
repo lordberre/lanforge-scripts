@@ -1,29 +1,44 @@
 #!env /usr/bin/python
-
 import sys
-import signal
+import os
+import importlib
 import traceback
 # Extend this class to use common set of debug and request features for your script
-from pprint import pprint
+import pprint
 import time
 import random
 import string
 import datetime
 import argparse
-import LANforge.LFUtils
-from LANforge.LFUtils import *
-from LANforge import LFRequest
-import LANforge.LFRequest
-import csv
-import pandas as pd
-import os
+import re
+import logging
+import math
+
+if sys.version_info[0] != 3:
+    print("This script requires Python 3")
+    exit()
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../../")))
+
+debug_printer = pprint.PrettyPrinter(indent=2)
+LFRequest = importlib.import_module("py-json.LANforge.LFRequest")
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+Logg = importlib.import_module("lanforge_client.logg")
+logger = logging.getLogger(__name__)
+
+"""
+To enable lanforge_api in this code, set the environmental variable LF_USE_AUTOGEN=1:
+$ LF_USE_AUTOGEN=1 python3 jbr_jag_test.py --test set_port --host ct521a-lion
+"""
+if os.environ.get("LF_USE_AUTOGEN") == 1:
+    lanforge_api = importlib.import_module("lanforge_client.lanforge_api")
+    LFSession = lanforge_api.LFSession
 
 
 class LFCliBase:
-
-    SHOULD_RUN  = 0     # indicates normal operation
-    SHOULD_QUIT = 1     # indicates to quit loops, close files, send SIGQUIT to threads and return
-    SHOULD_HALT = 2     # indicates to quit loops, send SIGABRT to threads and exit
+    SHOULD_RUN = 0  # indicates normal operation
+    SHOULD_QUIT = 1  # indicates to quit loops, close files, send SIGQUIT to threads and return
+    SHOULD_HALT = 2  # indicates to quit loops, send SIGABRT to threads and exit
 
     # do not use `super(LFCLiBase,self).__init__(self, host, port, _debug)
     # that is py2 era syntax and will force self into the host variable, making you
@@ -34,22 +49,24 @@ class LFCliBase:
                  _exit_on_fail=False,
                  _local_realm=None,
                  _proxy_str=None,
-                 _capture_signal_list=[]):
+                 _capture_signal_list=None):
+        if _capture_signal_list is None:
+            _capture_signal_list = []
         self.fail_pref = "FAILED: "
         self.pass_pref = "PASSED: "
         self.lfclient_host = _lfjson_host
         self.lfclient_port = _lfjson_port
         self.debug = _debug
         # if (_debug):
-        #     print("LFCliBase._proxy_str: %s" % _proxy_str)
+        #     logger.debug("LFCliBase._proxy_str: %s" % _proxy_str)
         self.proxy = {}
         self.adjust_proxy(_proxy_str)
 
-        if (_local_realm is not None):
+        if _local_realm:
             self.local_realm = _local_realm
 
         # if (_debug):
-        #     print("LFCliBase._proxy_str: %s" % _proxy_str)
+        #     logger.debug("LFCliBase._proxy_str: %s" % _proxy_str)
         self.lfclient_url = "http://%s:%s" % (self.lfclient_host, self.lfclient_port)
         self.test_results = []
         self.exit_on_error = _exit_on_error
@@ -66,7 +83,7 @@ class LFCliBase:
 
         if len(_capture_signal_list) > 0:
             for zignal in _capture_signal_list:
-                self.captured_signal(zignal, self.my_captured_signal)
+                self.captured_signal(zignal)
         #
 
     def _finish(self):
@@ -126,21 +143,22 @@ class LFCliBase:
 
     def send_thread_signals(self, signum, fname):
         if len(self.thread_map) < 1:
-            print("no threads to signal")
+            logger.info("no threads to signal")
             return
         for (name, thread) in self.thread_map.items():
             if self.debug:
-                print("sending signal %s to thread %s" % (signum, name))
+                logger.debug("sending signal %s to thread %s" % (signum, name))
             # do a thing
 
-    def my_captured_signal(self, signum):
+    @staticmethod
+    def my_captured_signal(signum):
         """
         Override me to process signals, otherwise superclass signal handler is called.
         You may use _finish() or _halt() to indicate finishing soon or halting immediately.
 
         :return: True if we processed this signal
         """
-        print("my_captured_signal should be overridden")
+        logger.info("my_captured_signal should be overridden")
         return False
 
     def captured_signal(self, signum):
@@ -150,16 +168,52 @@ class LFCliBase:
         finishing soon or halting immediately. Use signal.signal(signal.STOP) to enable this.
         """
         if self.debug:
-            print("Captured signal %s" % signum)
+            logger.debug("Captured signal %s" % signum)
         if self.my_captured_signal(signum):
             if self.debug:
-                print("subclass processed signal")
+                logger.debug("subclass processed signal")
         else:
             if self.debug:
-                print("subclass ignored signal")
+                logger.debug("subclass ignored signal")
 
     def clear_test_results(self):
         self.test_results.clear()
+
+    # To be deprecated
+    def log_register_method_name(self, method_name=None):
+        if not method_name:
+            return
+        if os.environ.get("LF_USE_AUTOGEN") == 1:
+            Logg.register_method_name(method_name=method_name)
+        else:
+            if method_name not in self._method_name_list:
+                self._method_name_list.append(method_name)
+        if method_name not in self._tag_list:
+            self._tag_list.append(method_name)
+
+    def log_register_tag(self, tag=None):
+        if not tag:
+            return
+        if os.environ.get("LF_USE_AUTOGEN") == 1:
+            Logg.register_tag(tag=tag)
+        else:
+            if tag not in self._tag_list:
+                self._tag_list.append(tag)
+            self._logger.register_method_name(tag=tag)
+
+    def log_enable(self, reserved_tag=None):
+        if os.environ.get("LF_USE_AUTOGEN") == 1:
+            Logg.enable(reserved_tag=reserved_tag)
+        else:
+            self.log_register_tag(reserved_tag)
+
+    @staticmethod
+    def log_set_filename(filename=None):
+        if not filename:
+            return
+        logging.basicConfig(filename=filename)
+
+    # - END LOGGING -
 
     def json_post(self, _req_url, _data, debug_=False, suppress_related_commands_=None, response_json_list_=None):
         """
@@ -188,7 +242,7 @@ class LFCliBase:
                     del _data['suppress_postexec_cli']
                 if 'suppress_postexec_method' in _data:
                     del _data['suppress_postexec_method']
-            elif suppress_related_commands_ == False:
+            elif not suppress_related_commands_:
                 _data['suppress_preexec_cli'] = False
                 _data['suppress_preexec_method'] = False
                 _data['suppress_postexec_cli'] = False
@@ -201,19 +255,19 @@ class LFCliBase:
 
             lf_r.addPostData(_data)
             if debug_:
-                LANforge.LFUtils.debug_printer.pprint(_data)
+                logger.debug(debug_printer.pformat(_data))
             json_response = lf_r.json_post(show_error=debug_,
-                                          debug=debug_,
-                                          response_json_list_=response_json_list_,
-                                          die_on_error_=self.exit_on_error)
+                                           debug=debug_,
+                                           response_json_list_=response_json_list_,
+                                           die_on_error_=self.exit_on_error)
             if debug_ and (response_json_list_ is not None):
-                pprint.pprint(response_json_list_)
+                logger.debug(pprint.pformat(response_json_list_))
         except Exception as x:
             if debug_ or self.exit_on_error:
-                print("json_post posted to %s" % _req_url)
-                pprint.pprint(_data)
-                print("Exception %s:" % x)
-                traceback.print_exception(Exception, x, x.__traceback__, chain=True)
+                logger.debug("json_post posted to %s" % _req_url)
+                logger.debug(pprint.pformat(_data))
+                logger.debug("Exception %s:" % x)
+                logger.debug(traceback.format_exception(Exception, x, x.__traceback__, chain=True))
             if self.exit_on_error:
                 exit(1)
         return json_response
@@ -239,7 +293,7 @@ class LFCliBase:
                                        die_on_error_=self.exit_on_error)
             lf_r.addPostData(_data)
             if debug_:
-                LANforge.LFUtils.debug_printer.pprint(_data)
+                logger.debug(debug_printer.pformat(_data))
             json_response = lf_r.json_put(show_error=self.debug,
                                           debug=debug_,
                                           response_json_list_=response_json_list_,
@@ -248,38 +302,43 @@ class LFCliBase:
                 pprint.pprint(response_json_list_)
         except Exception as x:
             if debug_ or self.exit_on_error:
-                print("json_put submitted to %s" % _req_url)
-                pprint.pprint(_data)
-                print("Exception %s:" % x)
-                traceback.print_exception(Exception, x, x.__traceback__, chain=True)
+                logger.debug("json_put submitted to %s" % _req_url)
+                logger.debug(pprint.pformat(_data))
+                logger.debug("Exception %s:" % x)
+                logger.debug(traceback.format_exception(Exception, x, x.__traceback__, chain=True))
             if self.exit_on_error:
                 exit(1)
         return json_response
 
-    def json_get(self, _req_url, debug_=False):
-        debug_ |= self.debug
+    def json_get(self, _req_url, debug_=None):
         # if debug_:
         #     print("json_get: "+_req_url)
         #     print("json_get: proxies:")
         #     pprint.pprint(self.proxy)
+        if debug_ is None:
+            debug_ = self.debug
         json_response = None
-        # print("----- GET ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ")
         try:
             lf_r = LFRequest.LFRequest(url=self.lfclient_url,
                                        uri=_req_url,
                                        proxies_=self.proxy,
                                        debug_=debug_,
                                        die_on_error_=self.exit_on_error)
-            json_response = lf_r.get_as_json(debug_=debug_, die_on_error_=False)
-            #debug_printer.pprint(json_response)
-            if (json_response is None) and debug_:
-                print("LFCliBase.json_get: no entity/response, probabily status 404")
+            json_response = lf_r.get_as_json()
+            if json_response is None:
+                if debug_:
+                    # TODO Figure this out.
+                    if hasattr(lf_r, 'print_errors'):
+                        lf_r.print_errors()
+                    else:
+                        logger.debug("LFCliBase.json_get: no entity/response, check other errors")
+                        time.sleep(10)
                 return None
         except ValueError as ve:
             if debug_ or self.exit_on_error:
-                print("jsonGet asked for " + _req_url)
-                print("Exception %s:" % ve)
-                traceback.print_exception(ValueError, ve, ve.__traceback__, chain=True)
+                logger.debug("jsonGet asked for {_req_url} ".format(_req_url=_req_url))
+                logger.debug("Exception %s:" % ve)
+                logger.debug(traceback.format_exception(ValueError, ve, ve.__traceback__, chain=True))
             if self.exit_on_error:
                 sys.exit(1)
 
@@ -288,26 +347,26 @@ class LFCliBase:
     def json_delete(self, _req_url, debug_=False):
         debug_ |= self.debug
         if debug_:
-            print("DELETE: "+_req_url)
+            logger.debug("DELETE: {_req_url}".format(_req_url=_req_url))
         json_response = None
         try:
-            # print("----- DELETE ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ")
+            # logger.info("----- DELETE ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ")
             lf_r = LFRequest.LFRequest(url=self.lfclient_url,
                                        uri=_req_url,
                                        proxies_=self.proxy,
                                        debug_=debug_,
                                        die_on_error_=self.exit_on_error)
             json_response = lf_r.json_delete(debug=debug_, die_on_error_=False)
-            print(json_response)
-            #debug_printer.pprint(json_response)
+            logger.info(json_response)
+            # logger.debug(debug_printer.pformat(json_response))
             if (json_response is None) and debug_:
-                print("LFCliBase.json_delete: no entity/response, probabily status 404")
+                logger.debug("LFCliBase.json_delete: no entity/response, probabily status 404")
                 return None
         except ValueError as ve:
             if debug_ or self.exit_on_error:
-                print("json_delete asked for " + _req_url)
-                print("Exception %s:" % ve)
-                traceback.print_exception(ValueError, ve, ve.__traceback__, chain=True)
+                logger.debug("json_delete asked for {_req_url}".format(_req_url=_req_url))
+                logger.debug("Exception %s:" % ve)
+                logger.debug(traceback.format_exception(ValueError, ve, ve.__traceback__, chain=True))
             if self.exit_on_error:
                 sys.exit(1)
         # print("----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- ")
@@ -318,7 +377,8 @@ class LFCliBase:
         reverse_map = {}
         if (json_list is None) or (len(json_list) < 1):
             if debug_:
-                print("response_list_to_map: no json_list provided")
+                logger.debug("response_list_to_map: no json_list provided")
+                logger.critical("response_list_to_map: no json_list provided")
                 raise ValueError("response_list_to_map: no json_list provided")
             return reverse_map
 
@@ -344,31 +404,74 @@ class LFCliBase:
 
         return reverse_map
 
-    def error(self, exception):
-        # print("lfcli_base error: %s" % exception)
-        pprint.pprint(exception)
-        traceback.print_exception(Exception, exception, exception.__traceback__, chain=True)
+    @staticmethod
+    def error(exception):
+        # logger.info("lfcli_base error: %s" % exception)
+        logger.info(pprint.pformat(exception))
+        logger.info(traceback.format_exception(Exception, exception, exception.__traceback__, chain=True))
 
-    def check_connect(self):
-        if self.debug:
-            print("Checking for LANforge GUI connection: %s" % self.lfclient_url)
-        response = self.json_get("/", debug_=self.debug)
-        duration = 0
-        while (response is None) and (duration < 300):
-            print("LANforge GUI connection not found sleeping 5 seconds, tried: %s" % self.lfclient_url)
-            duration += 2
-            time.sleep(2)
-            response = self.json_get("", debug_=self.debug)
+    def check_connect(self, timeout=300):
+        curr_time = math.floor(time.time())
+        in30d_time = math.floor(curr_time + datetime.timedelta(days=30).total_seconds())
+        logger.debug("Checking for LANforge GUI connection: %s" % self.lfclient_url)
+        # negative naptime indicates a warning not an error. Keep this a negative value.
+        # naptime will be transformed to positive if licenses are expired. Missing license
+        # will use the absolute value of this.
+        naptime = -5
+        warnings = list()
+        for _ in range(0, int(timeout / 2)):
+            lic_json = self.json_get("/misc/license", debug_=self.debug)
+            if lic_json:
+                if ("license" in lic_json) and lic_json["license"]:
+                    lic_block = lic_json["license"].replace("\\n|\\r|\r|\n", "____")
+                    lic_block = lic_block.replace("____+", "\n")
+                    logger.debug("\nlicense contents found:\n{lic_block}".format(lic_block=lic_block))
+                    lic_list = lic_block.split("\n")
 
-        if duration >= 300:
-            print("Could not connect to LANforge GUI")
-            sys.exit(1)
+                    for line in lic_list:
+                        line = line.strip()
+                        if (not line) or (line == "\\n"):
+                            continue
+                        hunks = re.split("\s+", line)
+                        if (hunks[-1]) == "forever":
+                            continue
 
-    #return ALL messages in list form
+                        expire_at = int(hunks[-1])
+                        if expire_at < curr_time:
+                            warnings.append("** License item %s EXPIRED on %s"
+                                            % ( hunks[0],
+                                                time.strftime('%Y-%m-%d %H:%M', time.localtime(expire_at))))
+                            naptime = abs(naptime)
+                        elif expire_at <= in30d_time:
+                            warnings.append("** License item %s WILL expire on %s"
+                                            % ( hunks[0],
+                                                time.strftime('%Y-%m-%d %H:%M', time.localtime(expire_at))))
+                    if len(warnings) > 0:
+                        combined_warn = "\nScripts might fail because of unavailable features:\n" \
+                                        +("\n".join(warnings))
+                        if (naptime > 0):
+                            logger.error(combined_warn)
+                            time.sleep(naptime)
+                        else:
+                            logger.warning(combined_warn)
+                    return True
+                else:
+                    logging.error("System lacks a license. Scripts might fail because of unavailable features.")
+                    time.sleep(abs(naptime))
+                    return True
+            else:
+                logger.warning("LANforge GUI connection not found sleeping %s seconds, tried: %s"
+                               % (naptime, self.lfclient_url))
+                time.sleep(abs(naptime))
+
+        logger.info("Could not connect to LANforge GUI")
+        sys.exit(1)
+
+    # return ALL messages in list form
     def get_result_list(self):
         return self.test_results
 
-    #return ALL fail messages in list form
+    # return ALL fail messages in list form
     def get_failed_result_list(self):
         fail_list = []
         for result in self.test_results:
@@ -376,7 +479,7 @@ class LFCliBase:
                 fail_list.append(result)
         return fail_list
 
-    #return ALL pass messages in list form
+    # return ALL pass messages in list form
     def get_passed_result_list(self):
         pass_list = []
         for result in self.test_results:
@@ -395,51 +498,79 @@ class LFCliBase:
     def get_all_message(self):
         return "\n".join(self.test_results)
 
-    #determines if overall test passes via comparing passes vs. fails
+    # determines if overall test passes via comparing passes vs. fails
     def passes(self):
         pass_counter = 0
         fail_counter = 0
+        if len(self.test_results) < 1:
+            logger.error("passes: zero test results, Chamberview tests will show zero test results so not an error")
         for result in self.test_results:
+            logger.debug("test_result: %s" % result)
             if result.startswith("PASS"):
+                logger.debug("passes")
                 pass_counter += 1
             else:
+                logger.debug("fails")
                 fail_counter += 1
-        if (fail_counter == 0) and (pass_counter > 0):
+        if (fail_counter == 0):
             return True
         return False
 
-    #EXIT script with a fail
+    def print_pass_fail(self):
+        pl = self.get_passed_result_list()
+        if len(pl) > 0:
+            logging.info("------------ PASSING TESTS --------------")
+            for p in pl:
+                logging.info(p)
+
+        fl = self.get_failed_result_list()
+        if len(fl) > 0:
+            logging.error("------------ FAILED TESTS --------------")
+            for f in fl:
+                logging.error(f)
+
+    # EXIT script with a fail
     def exit_fail(self, message="%d out of %d tests failed. Exiting script with script failure."):
-        total_len=len(self.get_result_list())
-        fail_len=len(self.get_failed_result_list())
-        print(message %(fail_len,total_len))
+        self.print_pass_fail()
+        total_len = len(self.get_result_list())
+        fail_len = len(self.get_failed_result_list())
+        # Leave in both for now, until scripts updated for logger
+        print(message % (fail_len, total_len))
+        logger.info(message % (fail_len, total_len))
         sys.exit(1)
 
     # use this inside the class to log a failure result and print it if wished
     def _fail(self, message, print_=False):
         self.test_results.append(self.fail_pref + message)
         if print_ or self.exit_on_fail:
+            # Leave in both for now, until scripts updated for logger
             print(self.fail_pref + message)
+            logger.info(self.fail_pref + message)
         if self.exit_on_fail:
             sys.exit(1)
 
-    #EXIT script with a success
-    def exit_success(self,message="%d out of %d tests passed successfully. Exiting script with script success."):
-        num_total=len(self.get_result_list())
-        num_passing=len(self.get_passed_result_list())
-        print(message %(num_passing,num_total))
+    # EXIT script with a success
+    def exit_success(self, message="%d out of %d tests passed successfully. Exiting script with script success."):
+        self.print_pass_fail()
+        num_total = len(self.get_result_list())
+        num_passing = len(self.get_passed_result_list())
+        # Leave in both for now, until scripts updated for logger
+        print(message % (num_passing, num_total))
+        logger.info(message % (num_passing, num_total))
         sys.exit(0)
 
-    def success(self,message="%d out of %d tests passed successfully."):
-        num_total=len(self.get_result_list())
-        num_passing=len(self.get_passed_result_list())
-        print(message %(num_passing,num_total))
+    def success(self, message="%d out of %d tests passed successfully."):
+        num_total = len(self.get_result_list())
+        num_passing = len(self.get_passed_result_list())
+        print(message % (num_passing, num_total))
+        logger.info(message % (num_passing, num_total))
 
     # use this inside the class to log a pass result and print if wished.
     def _pass(self, message, print_=False):
         self.test_results.append(self.pass_pref + message)
         if print_:
             print(self.pass_pref + message)
+            logger.info(self.pass_pref + message)
 
     def adjust_proxy(self, proxy_str):
         # if self.debug:
@@ -457,27 +588,37 @@ class LFCliBase:
         #     print("lfclibase::self.proxy: ")
         #     pprint.pprint(self.proxy)
 
-
-    def logg2(self, level="debug", mesg=None):
+    @staticmethod
+    # TODO 1/31/2022 need to see all locations that used and switch to logger
+    def logg2(level="debug", mesg=None):
         if (mesg is None) or (mesg == ""):
             return
         print("[{level}]: {msg}".format(level=level, msg=mesg))
 
-    def logg(self,
-              level=None,
-              mesg=None,
-              filename=None,
-              scriptname=None):
+    @staticmethod
+    # TODO 1/31/2022 need to see all locations that used and switch to logger
+    def logg(level=None,
+             mesg=None,
+             filename=None,
+             scriptname=None):
+        """
+        This method is used by vr_profile2, lf_create_bcast, and shadowed by base_profile.py
+        :param level:
+        :param mesg:
+        :param filename:
+        :param scriptname:
+        :return:
+        """
         if (mesg is None) or (mesg == "") or (level is None):
             return
-        userhome=os.path.expanduser('~')
-        session = str(datetime.datetime.now().strftime("%Y-%m-%d-%H-h-%M-m-%S-s")).replace(':','-')
-        if filename == None:
-            try:
+        userhome = os.path.expanduser('~')
+        session = str(datetime.datetime.now().strftime("%Y-%m-%d-%H-h-%M-m-%S-s")).replace(':', '-')
+        if filename is None:
+            if not os.path.isdir("%s/report-data/%s" % (userhome, session)):
+                if not os.path.isdir('%s/report-data' % userhome):
+                    os.mkdir('%s/report-data' % userhome)
                 os.mkdir("%s/report-data/%s" % (userhome, session))
-            except:
-                pass
-            filename = ("%s/report-data/%s/%s.log" % (userhome,session,scriptname))
+            filename = ("%s/report-data/%s/%s.log" % (userhome, session, scriptname))
         import logging
         logging.basicConfig(filename=filename, level=logging.DEBUG)
         if level == "debug":
@@ -488,7 +629,7 @@ class LFCliBase:
             logging.warning(mesg)
         elif level == "error":
             logging.error(mesg)
-    
+
     @staticmethod
     def parse_time(time_string):
         if isinstance(time_string, str):
@@ -539,10 +680,20 @@ class LFCliBase:
             parser = argparse.ArgumentParser()
         optional = parser.add_argument_group('optional arguments')
         required = parser.add_argument_group('required arguments')
-        optional.add_argument('--mgr',            help='hostname for where LANforge GUI is running', default='localhost')
-        optional.add_argument('--mgr_port',       help='port LANforge GUI HTTP service is running on', default=8080)
-        optional.add_argument('--debug', '-d',    help='Enable debugging', default=False, action="store_true")
-        optional.add_argument('--proxy',          nargs='?', default=None, # action=ProxyAction,
+        optional.add_argument('--mgr',
+                              default='localhost',
+                              help='hostname for where LANforge GUI is running')
+        optional.add_argument('--mgr_port',
+                              default=8080,
+                              help='port LANforge GUI HTTP service is running on')
+        optional.add_argument('--debug',
+                              '-d',
+                              default=False,
+                              action="store_true",
+                              help='Enable debugging')
+        optional.add_argument('--proxy',
+                              nargs='?',
+                              default=None,  # action=ProxyAction,
                               help='Connection proxy like http://proxy.localnet:80 or https://user:pass@proxy.localnet:3128')
 
         return parser
@@ -566,36 +717,83 @@ class LFCliBase:
         optional = parser.add_argument_group('optional arguments')
         required = parser.add_argument_group('required arguments')
 
-        #Optional Args
-        optional.add_argument('--mgr',            help='hostname for where LANforge GUI is running', default='localhost')
-        optional.add_argument('--mgr_port',       help='port LANforge GUI HTTP service is running on', default=8080)
-        optional.add_argument('-u', '--upstream_port',
-                            help='non-station port that generates traffic: <resource>.<port>, e.g: 1.eth1',
-                            default='1.eth1')
-        optional.add_argument('--num_stations',   help='Number of stations to create', default=0)
-        optional.add_argument('--test_id',        help='Test ID (intended to use for ws events)', default="webconsole")
-        optional.add_argument('--debug',          help='Enable debugging', default=False, action="store_true")
-        optional.add_argument('--proxy',          nargs='?', default=None,
-                              help='Connection proxy like http://proxy.localnet:80 or https://user:pass@proxy.localnet:3128')
+        # Optional Args
+        optional.add_argument('--mgr',
+                              '--lfmgr',
+                              default='localhost',
+                              help='hostname for where LANforge GUI is running')
+        optional.add_argument('--mgr_port',
+                              '--port',
+                              default=8080,
+                              help='port LANforge GUI HTTP service is running on')
+        optional.add_argument('-u',
+                              '--upstream_port',
+                              default='1.eth1',
+                              help='non-station port that generates traffic: <resource>.<port>, e.g: 1.eth1')
+        optional.add_argument('--num_stations',
+                              type=int,
+                              default=0,
+                              help='Number of stations to create')
+        optional.add_argument('--test_id',
+                              default="webconsole",
+                              help='Test ID (intended to use for ws events)')
+        optional.add_argument('-d',
+                              '--debug',
+                              action="store_true",
+                              help='Enable debugging')
+        optional.add_argument('--log_level',
+                              default=None,
+                              help='Set logging level: debug | info | warning | error | critical')
+        optional.add_argument('--lf_logger_config_json',
+                              help="--lf_logger_config_json <json file> , json configuration of logger")
+        optional.add_argument('--proxy',
+                              nargs='?',
+                              default=None,
+                              help="Connection proxy like http://proxy.localnet:80 \n"
+                                   + " or https://user:pass@proxy.localnet:3128")
+        optional.add_argument('--debugging',
+                              nargs="+",
+                              action="append",
+                              help="Indicate what areas you would like express debug output:\n"
+                                   + " - digest - print terse indications of lanforge_api calls\n"
+                                   + " - json - print url and json data\n"
+                                   + " - http - print HTTP headers\n"
+                                   + " - gui - ask the GUI for extra debugging in responses\n"
+                                   + " - method:method_name - enable by_method() debugging (if present)\n"
+                                   + " - tag:tagname - enable matching by_tag() debug output\n"
+                              )
+        optional.add_argument('--debug_log',
+                              default=None,
+                              help="Specify a file to send debug output to")
+        optional.add_argument('--no_cleanup', help='Do not cleanup before exit',
+                              action='store_true')
         if more_optional is not None:
-           for x in more_optional:
-               if 'default' in x.keys():
-                   optional.add_argument(x['name'], help=x['help'], default=x['default'])
-               else:
-                   optional.add_argument(x['name'], help=x['help'])
+            for argument in more_optional:
+                if 'default' in argument.keys():
+                    optional.add_argument(argument['name'], help=argument['help'], default=argument['default'])
+                else:
+                    optional.add_argument(argument['name'], help=argument['help'])
 
-        #Required Args
-        required.add_argument('--radio',          help='radio EID, e.g: 1.wiphy2')
-        required.add_argument('--security',       help='WiFi Security protocol: < open | wep | wpa | wpa2 | wpa3 >', default="open")
-        required.add_argument('--ssid',           help='WiFi SSID for script objects to associate to')
-        required.add_argument('--passwd', '--password' ,'--key', help='WiFi passphrase/password/key', default="[BLANK]")
+        # Required Args
+        required.add_argument('--radio',
+                              help='radio EID, e.g: 1.wiphy2')
+        required.add_argument('--security',
+                              default="open",
+                              help='WiFi Security protocol: < open | wep | wpa | wpa2 | wpa3 >')
+        required.add_argument('--ssid',
+                              help='WiFi SSID for script objects to associate to')
+        required.add_argument('--passwd',
+                              '--password',
+                              '--key',
+                              default="[BLANK]",
+                              help='WiFi passphrase/password/key')
 
         if more_required is not None:
-            for x in more_required:
-                if 'default' in x.keys():
-                    required.add_argument(x['name'], help=x['help'], default=x['default'])
+            for argument in more_required:
+                if 'default' in argument.keys():
+                    required.add_argument(argument['name'], help=argument['help'], default=argument['default'])
                 else:
-                    required.add_argument(x['name'], help=x['help'])
+                    required.add_argument(argument['name'], help=argument['help'])
 
         return parser
 
@@ -614,24 +812,29 @@ class LFCliBase:
         }
         self.json_post("/cli-json/add_event", data, debug_=debug_)
 
-    def read_file(self, filename):
+    @staticmethod
+    def read_file(filename):
         filename = open(filename, 'r')
         return [line.split(',') for line in filename.readlines()]
 
-    #Function creates random characters made of letters
-    def random_chars(self, size, chars=None):
+    # Function creates random characters made of letters
+    @staticmethod
+    def random_chars(size, chars=None):
         if chars is None:
             chars = string.ascii_letters
         return ''.join(random.choice(chars) for x in range(size))
 
-    def get_milliseconds(self, timestamp):
-        return (timestamp - datetime.datetime(1970,1,1)).total_seconds()*1000
+    @staticmethod
+    def get_milliseconds(timestamp):
+        return (timestamp - datetime.datetime(1970, 1, 1)).total_seconds() * 1000
 
-    def get_seconds(self, timestamp):
-        return (timestamp - datetime.datetime(1970,1,1)).total_seconds()
+    @staticmethod
+    def get_seconds(timestamp):
+        return (timestamp - datetime.datetime(1970, 1, 1)).total_seconds()
 
-    def replace_special_char(self, str):
-        return str.replace('+', ' ').replace('_', ' ').strip(' ')
+    @staticmethod
+    def replace_special_char(special_str):
+        return special_str.replace('+', ' ').replace('_', ' ').strip(' ')
 
     Help_Mode = """Station WiFi modes: use the number value below:
                 auto   : 0,
@@ -648,119 +851,4 @@ class LFCliBase:
                 bgnAC  : 11,
                 abgnAX : 12,
                 bgnAX  : 13
-""" 
-
-    #================ Pandas Dataframe Functions ======================================
-    
-     #takes any dataframe and returns the specified file extension of it
-    def df_to_file(self, output_f=None,dataframe=None, save_path=None):
-        if output_f.lower() == 'hdf': 
-            import tables
-            dataframe.to_hdf(save_path.replace('csv','h5',1), 'table', append=True)
-        if output_f.lower() == 'parquet':
-            import pyarrow as pa
-            dataframe.to_parquet(save_path.replace('csv','parquet',1), engine='pyarrow')
-        if output_f.lower() == 'png':
-            fig = dataframe.plot().get_figure()
-            fig.savefig(save_path.replace('csv','png',1))
-        if output_f.lower() == 'xlsx':
-            dataframe.to_excel(save_path.replace('csv','xlsx',1))
-        if output_f.lower() == 'json':
-            dataframe.to_json(save_path.replace('csv','json',1))
-        if output_f.lower() == 'stata':
-            dataframe.to_stata(save_path.replace('csv','dta',1))
-        if output_f.lower() == 'pickle':
-            dataframe.to_pickle(save_path.replace('csv','pkl',1))
-        if output_f.lower() == 'html':
-            dataframe.to_html(save_path.replace('csv','html',1))
-          
-    #takes any format of a file and returns a dataframe of it
-    def file_to_df(self,file_name):
-        if file_name.split('.')[-1] == 'csv':
-            return pd.read_csv(file_name)
-        
-   #only works for test_ipv4_variable_time at the moment
-    def compare_two_df(self,dataframe_one=None,dataframe_two=None):
-        #df one = current report
-        #df two = compared report
-        pd.set_option("display.max_rows", None, "display.max_columns", None)
-        #get all of common columns besides Timestamp, Timestamp milliseconds 
-        common_cols = list(set(dataframe_one.columns).intersection(set(dataframe_two.columns)))
-        cols_to_remove = ['Timestamp milliseconds epoch','Timestamp','LANforge GUI Build: 5.4.3']
-        com_cols = [i for i in common_cols if i not in cols_to_remove]
-        #check if dataframes have the same endpoints
-        if dataframe_one.name.unique().tolist().sort() == dataframe_two.name.unique().tolist().sort():
-            endpoint_names =  dataframe_one.name.unique().tolist()
-            if com_cols is not None:
-                dataframe_one = dataframe_one[[c for c in dataframe_one.columns if c in com_cols]]
-                dataframe_two = dataframe_two[[c for c in dataframe_one.columns if c in com_cols]]
-                dataframe_one = dataframe_one.loc[:, ~dataframe_one.columns.str.startswith('Script Name:')]
-                dataframe_two = dataframe_two.loc[:, ~dataframe_two.columns.str.startswith('Script Name:')]
-                lowest_duration=min(dataframe_one['Duration elapsed'].max(),dataframe_two['Duration elapsed'].max())
-                print("The max duration in the new dataframe will be... " + str(lowest_duration))
-
-                compared_values_dataframe = pd.DataFrame(columns=[col for col in com_cols if not col.startswith('Script Name:')])
-                cols = compared_values_dataframe.columns.tolist()
-                cols=sorted(cols, key=lambda L: (L.lower(), L))
-                compared_values_dataframe= compared_values_dataframe[cols]
-                print(compared_values_dataframe)
-                for duration_elapsed in range(lowest_duration):
-                    for endpoint in endpoint_names:
-                        #check if value has a space in it or is a str. 
-                        # if value as a space, only take value before space for calc, append that calculated value after space.
-                        #if str. check if values match from 2 df's. if values do not match, write N/A
-                        for_loop_df1 = dataframe_one.loc[(dataframe_one['name'] == endpoint) & (dataframe_one['Duration elapsed'] == duration_elapsed)]
-                        for_loop_df2 = dataframe_two.loc[(dataframe_one['name'] == endpoint) & (dataframe_two['Duration elapsed'] == duration_elapsed)]
-                       # print(for_loop_df1)
-                       # print(for_loop_df2)
-                        cols_to_loop = [i for i in com_cols if i not in ['Duration elapsed', 'Name', 'Script Name: test_ipv4_variable_time']]
-                        cols_to_loop=sorted(cols_to_loop, key=lambda L: (L.lower(), L))
-                        print(cols_to_loop)
-                        row_to_append={}
-                        row_to_append["Duration elapsed"] = duration_elapsed
-                        for col in cols_to_loop:
-                            print(col)
-                            print(for_loop_df1)
-                            #print(for_loop_df2)
-                            print(for_loop_df1.at[0, col])
-                            print(for_loop_df2.at[0, col])
-                            if type(for_loop_df1.at[0, col]) == str and type(for_loop_df2.at[0, col]) == str:
-                                if (' ' in for_loop_df1.at[0,col]) == True:
-                                    #do subtraction
-                                    new_value = float(for_loop_df1.at[0, col].split(" ")[0]) - float(for_loop_df2.at[0, col].split(" ")[0])
-                                    #add on last half of string
-                                    new_value = str(new_value)+ for_loop_df2.at[0, col].split(" ")[1]
-                                    # print(new_value)
-                                    row_to_append[col] = new_value
-                                else:
-                                    if for_loop_df1.at[0, col] != for_loop_df2.at[0, col]:
-                                        row_to_append[col] = 'NaN'
-                                    else:
-                                        row_to_append[col] = for_loop_df1.at[0,col]
-                            elif type(for_loop_df1.at[0, col]) == int and type(for_loop_df2.at[0, col]) == int or type(for_loop_df1.at[0, col]) == float and type(for_loop_df2.at[0,col]) == float:
-                                new_value = for_loop_df1.at[0, col] - for_loop_df2.at[0, col]
-                                row_to_append[col] = new_value
-                        compared_values_dataframe = compared_values_dataframe.append(row_to_append, ignore_index=True,)
-                        print(compared_values_dataframe)
-                    #add col name to new df
-                print(dataframe_one)
-                print(dataframe_two)
-                print(compared_values_dataframe)
-            else:
-                ValueError("Unable to execute report comparison due to inadequate file commonalities. ")   
-                exit(1)
-        else:
-            ValueError("Two files do not have the same endpoints. Please try file comparison with files that have the same endpoints.")
-            exit(1)
-    
-        
-        #take those columns and separate those columns from others in DF.
-
-
-        pass    
-        #return compared_df
-
-    def append_df_to_file(self,dataframe, file_name):
-        pass
-
-# ~class
+"""

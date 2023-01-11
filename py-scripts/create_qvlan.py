@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
-
 import sys
 import os
+import importlib
+import argparse
+import logging
+
+logger = logging.getLogger(__name__)
 
 if sys.version_info[0] != 3:
-    print("This script requires Python 3")
+    logger.critical("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
 
-import argparse
-from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
-from LANforge.add_file_endp import *
-from LANforge import LFUtils
-import argparse
-from realm import Realm
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+add_file_endp = importlib.import_module("py-json.LANforge.add_file_endp")
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
+lf_logger_config = importlib.import_module("py-scripts.lf_logger_config")
 
 
 class CreateQVlan(Realm):
@@ -29,11 +33,15 @@ class CreateQVlan(Realm):
                  netmask=None,
                  first_qvlan_ip=None,
                  gateway=None,
-                 port_list=[],
-                 ip_list=[],
+                 port_list=None,
+                 ip_list=None,
                  exit_on_error=False,
                  debug=False):
         super().__init__(host, port)
+        if port_list is None:
+            port_list = []
+        if ip_list is None:
+            ip_list = []
         self.host = host
         self.port = port
         self.qvlan_parent = qvlan_parent
@@ -53,8 +61,14 @@ class CreateQVlan(Realm):
         self.qvlan_profile.dhcp = dhcp
 
     def build(self):
-        print("Creating QVLAN stations")
-        self.qvlan_profile.create(admin_down=False, sleep_time=.5, debug=self.debug)
+        logger.info("Creating QVLAN stations")
+        if self.qvlan_profile.create(
+            debug=self.debug,
+            sleep_time=0,
+            ):
+            self._pass("802.1q VLAN creation successful.")
+        else:
+            self._fail("802.1q VLAN creation failed.")
 
 
 def main():
@@ -68,23 +82,64 @@ def main():
         ---------------------
         Generic command ''')
     parser.add_argument('--radio', help='radio EID, e.g: 1.wiphy2')
-    parser.add_argument('--qvlan_parent', help='specifies parent port for qvlan creation', default=None)
-    parser.add_argument('--first_port', help='specifies name of first port to be used', default=None)
-    parser.add_argument('--num_ports', help='number of ports to create', default=1)
-    parser.add_argument('--first_qvlan_ip', help='specifies first static ip address to be used or dhcp', default=None)
-    parser.add_argument('--netmask', help='specifies netmask to be used with static ip addresses', default=None)
-    parser.add_argument('--gateway', help='specifies default gateway to be used with static addressing', default=None)
-    parser.add_argument('--use_ports',
-                        help='list of comma separated ports to use with ips, \'=\' separates name and ip { port_name1=ip_addr1,port_name1=ip_addr2 }.  Ports without ips will be left alone',
-                        default=None)
+    parser.add_argument(
+        '--qvlan_parent',
+        help='specifies parent port for qvlan creation',
+        default=None,
+        required=True)
+    parser.add_argument(
+        '--first_port',
+        help='specifies name of first port to be used',
+        default=None)
+    parser.add_argument(
+        '--num_ports',
+        type=int,
+        help='number of ports to create',
+        default=1)
+    parser.add_argument(
+        '--first_qvlan_ip',
+        help='specifies first static ip address to be used or dhcp',
+        default=None)
+    parser.add_argument(
+        '--netmask',
+        help='specifies netmask to be used with static ip addresses',
+        default=None)
+    parser.add_argument(
+        '--gateway',
+        help='specifies default gateway to be used with static addressing',
+        default=None)
+    parser.add_argument(
+        '--use_ports',
+        help='list of comma separated ports to use with ips, \'=\' separates name and ip { port_name1=ip_addr1,port_name1=ip_addr2 }.  Ports without ips will be left alone',
+        default=None)
     tg_group = parser.add_mutually_exclusive_group()
-    tg_group.add_argument('--add_to_group', help='name of test group to add cxs to', default=None)
-    parser.add_argument('--cxs', help='list of cxs to add/remove depending on use of --add_to_group or --del_from_group'
-                        , default=None)
-    parser.add_argument('--use_qvlans', help='will create qvlans', action='store_true', default=False)
+    tg_group.add_argument(
+        '--add_to_group',
+        help='name of test group to add cxs to',
+        default=None)
+    parser.add_argument(
+        '--cxs',
+        help='list of cxs to add/remove depending on use of --add_to_group or --del_from_group',
+        default=None)
+    parser.add_argument(
+        '--use_qvlans',
+        help='will create qvlans',
+        action='store_true',
+        default=False)
 
+    # TODO:  Use lfcli_base for common arguments.
+    parser.add_argument('--log_level',
+                        default=None,
+                        help='Set logging level: debug | info | warning | error | critical')
+    parser.add_argument('--lf_logger_config_json',
+                        help="--lf_logger_config_json <json file> , json configuration of logger")
 
     args = parser.parse_args()
+
+    logger_config = lf_logger_config.lf_logger_config()
+    # set the logger level to requested value
+    logger_config.set_level(level=args.log_level)
+    logger_config.set_json(json_file=args.lf_logger_config_json)
 
     update_group_args = {
         "name": None,
@@ -100,34 +155,44 @@ def main():
     update_group_args['cxs'] = args.cxs
     port_list = []
     ip_list = []
-    if args.first_port is not None and args.use_ports is not None:
+    if args.first_port and args.use_ports:
         if args.first_port.startswith("sta"):
-            if (args.num_ports is not None) and (int(args.num_ports) > 0):
+            if args.num_ports and args.num_ports > 0:
                 start_num = int(args.first_port[3:])
-                num_ports = int(args.num_ports)
-                port_list = LFUtils.port_name_series(prefix="sta", start_id=start_num, end_id=start_num + num_ports - 1,
-                                                     padding_number=10000,
-                                                     radio=args.radio)
+                port_list = LFUtils.port_name_series(
+                    prefix="sta",
+                    start_id=start_num,
+                    end_id=start_num + args.num_ports - 1,
+                    padding_number=10000,
+                    radio=args.radio)
                 print(1)
         else:
-            if (args.num_ports is not None) and args.qvlan_parent is not None and (int(args.num_ports) > 0) \
-                    and args.qvlan_parent in args.first_port:
-                start_num = int(args.first_port[args.first_port.index('#') + 1:])
-                num_ports = int(args.num_ports)
-                port_list = LFUtils.port_name_series(prefix=args.qvlan_parent + "#", start_id=start_num,
-                                                     end_id=start_num + num_ports - 1, padding_number=10000,
-                                                     radio=args.radio)
+            if args.num_ports and args.qvlan_parent and (args.num_ports > 0) and args.qvlan_parent in args.first_port:
+                start_num = int(
+                    args.first_port[args.first_port.index('#') + 1:])
+                port_list = LFUtils.port_name_series(
+                    prefix=str(
+                        args.qvlan_parent) + "#",
+                    start_id=start_num,
+                    end_id=start_num + args.num_ports - 1,
+                    padding_number=10000,
+                    radio=args.radio)
                 print(2)
             else:
-                raise ValueError("Invalid values for num_ports [%s], qvlan_parent [%s], and/or first_port [%s].\n"
-                                 "first_port must contain parent port and num_ports must be greater than 0"
-                                 % (args.num_ports, args.qvlan_parent, args.first_port))
+                raise ValueError(
+                    "Invalid values for num_ports [%s], qvlan_parent [%s], and/or first_port [%s].\n"
+                    "first_port must contain parent port and num_ports must be greater than 0" %
+                    (args.num_ports, args.qvlan_parent, args.first_port))
     else:
-        if args.use_ports is None:
+        if not args.use_ports:
             num_ports = int(args.num_ports)
-            port_list = LFUtils.port_name_series(prefix=args.qvlan_parent + "#", start_id=1,
-                                                 end_id=num_ports, padding_number=10000,
-                                                 radio=args.radio)
+            port_list = LFUtils.port_name_series(
+                prefix=str(
+                    args.qvlan_parent) + "#",
+                start_id=1,
+                end_id=num_ports,
+                padding_number=10000,
+                radio=args.radio)
             print(3)
         else:
             temp_list = args.use_ports.split(',')
@@ -139,7 +204,8 @@ def main():
                     ip_list.append(0)
 
             if len(port_list) != len(ip_list):
-                raise ValueError(temp_list, " ports must have matching ip addresses!")
+                raise ValueError(
+                    temp_list, " ports must have matching ip addresses!")
 
     print(port_list)
     print(ip_list)
@@ -155,7 +221,15 @@ def main():
                                ip_list=ip_list,
                                debug=args.debug)
     create_qvlan.build()
-    print('Created %s QVLAN stations' % num_ports)
+
+    # TODO:  Add code to clean up the stations built, unless --no_cleanup is specified.
+
+    if create_qvlan.passes():
+        logging.info('Created %s QVLAN stations' % args.num_ports)
+        create_qvlan.exit_success()
+    else:
+        create_vlan.exit_fail()
+
 
 if __name__ == "__main__":
     main()

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 Note: To Run this script gui should be opened with
 
@@ -28,6 +27,10 @@ How to Run this:
                 --ssid "ssid_idx=0 ssid=NET1 security=WPA|WEP|11r|EAP-PEAP bssid=78:d2:94:bf:16:41"
                 --ssid "ssid_idx=1 ssid=NET1 security=WPA password=test bssid=78:d2:94:bf:16:40"
 
+    The contents of '--ssid' argument are split with shlex, so you can do commands like this as well:
+    ./create_chamberview_dut.py --lfmgr localhost --dut_name regression_dut
+       --ssid "ssid_idx=0 ssid='j-wpa2-153 space' security='wpa2' password=j-wpa2-153 bssid=04:f0:21:cb:01:8b"
+
     --lfmgr = IP of lanforge
     --port = Default 8080
     --dut_name = Enter name of DUT ( to update DUT enter same DUT name )
@@ -45,33 +48,41 @@ How to Run this:
 
 Output : DUT will be created in Chamber View
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
+import shlex
+import logging
+
+logger = logging.getLogger(__name__)
 
 if sys.version_info[0] != 3:
-    print("This script requires Python 3")
+    logger.critical("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_dut_profile import cv_dut as dut
-from cv_test_manager import cv_test as cvtest
-
+# from cv_dut_profile import cv_dut as dut
+cv_dut_profile = importlib.import_module("py-json.cv_dut_profile")
+dut = cv_dut_profile.cv_dut
+# from cv_test_manager import cv_test as cvtest
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cvtest = cv_test_manager.cv_test
+lf_logger_config = importlib.import_module("py-scripts.lf_logger_config")
 
 class DUT(dut):
     def __init__(self,
                  lfmgr="localhost",
                  port="8080",
                  dut_name="DUT",
-                 ssid=[],
+                 ssid=None,
                  sw_version="NA",
                  hw_version="NA",
                  serial_num="NA",
                  model_num="NA",
+                 dut_flags=None,
                  ):
         super().__init__(
             lfclient_host=lfmgr,
@@ -80,7 +91,11 @@ class DUT(dut):
             hw_version=hw_version,
             serial_num=serial_num,
             model_num=model_num,
+            desired_dut_flags=dut_flags,
+            desired_dut_flags_mask=dut_flags
         )
+        if ssid is None:
+            ssid = []
         self.cv_dut_name = dut_name
         self.cv_test = cvtest(lfmgr, port)
         self.dut_name = dut_name
@@ -100,24 +115,31 @@ class DUT(dut):
         flags['eap-peap'] = 0x800
         if self.ssid:
             for j in range(len(self.ssid)):
-                self.ssid[j] = self.ssid[j][0].split(' ')
+                self.ssid[j] = shlex.split(self.ssid[j][0])
                 for k in range(len(self.ssid[j])):
-                    self.ssid[j][k] = self.ssid[j][k].split('=')
+                    kvp = self.ssid[j][k].split('=')
+                    #print("key -:%s:-  val -:%s:-" % (kvp[0], kvp[1]))
+                    self.ssid[j][k] = kvp
+
                 d = dict()
                 for item in self.ssid[j]:
                     d[item[0].lower()] = item[1]
                 self.ssid[j] = d
                 self.ssid[j]['flag'] = []
-                self.ssid[j].keys
 
-                flag=0x0
+                flag = 0x0
                 if 'security' in self.ssid[j].keys():
                     self.ssid[j]['security'] = self.ssid[j]['security'].split('|')
                     for security in self.ssid[j]['security']:
-                        try:
+                        #print("security: %s  flags: %s  keys: %s" % (security, flags, flags.keys()))
+                        if security.lower() in flags:
                             flag |= flags[security.lower()]
-                        except:
-                            pass
+                            #print("updated flag: %s" % (flag))
+                        else:
+                            emsg = "ERROR:  Un-supported security flag: %s" % (security)
+                            logger.critical(emsg)
+                            raise ValueError("Un-supported security flag")  # Bad user input, terminate script.
+
                 self.ssid[j]['flag'] = flag
 
                 if 'bssid' not in self.ssid[j].keys():
@@ -138,34 +160,75 @@ class DUT(dut):
 
 def main():
     parser = argparse.ArgumentParser(
+        prog='create_chamberview_dut.py',
+        formatter_class=argparse.RawTextHelpFormatter,
         description="""
-        ./create_chamberview_dut -m "localhost" -o "8080" -d "dut_name" 
-                --ssid "ssid_idx=0 ssid=NET1 security=WPA|WEP|11r|EAP-PEAP bssid=78:d2:94:bf:16:41" 
+        ./create_chamberview_dut -m "localhost" -o "8080" -d "dut_name"
+                --ssid "ssid_idx=0 ssid=NET1 security=WPA|WEP|11r|EAP-PEAP bssid=78:d2:94:bf:16:41"
                 --ssid "ssid_idx=1 ssid=NET1 security=WPA password=test bssid=78:d2:94:bf:16:40"
                """)
-    parser.add_argument("-m", "--lfmgr", type=str, default="localhost",
-                        help="address of the LANforge GUI machine (localhost is default)")
-    parser.add_argument("-o", "--port", type=str, default="8080",
-                        help="IP Port the LANforge GUI is listening on (8080 is default)")
+    parser.add_argument(
+        "-m",
+        "--lfmgr",
+        type=str,
+        default="localhost",
+        help="address of the LANforge GUI machine (localhost is default)")
+    parser.add_argument(
+        "-o",
+        "--port",
+        type=str,
+        default="8080",
+        help="IP Port the LANforge GUI is listening on (8080 is default)")
     parser.add_argument("-d", "--dut_name", type=str, default="DUT",
                         help="set dut name")
     parser.add_argument("-s", "--ssid", action='append', nargs=1,
                         help="SSID", default=[])
 
-    parser.add_argument("--sw_version", default="NA", help="DUT Software version.")
-    parser.add_argument("--hw_version", default="NA", help="DUT Hardware version.")
-    parser.add_argument("--serial_num", default="NA", help="DUT Serial number.")
+    parser.add_argument(
+        "--sw_version",
+        default="NA",
+        help="DUT Software version.")
+    parser.add_argument(
+        "--hw_version",
+        default="NA",
+        help="DUT Hardware version.")
+    parser.add_argument(
+        "--serial_num",
+        default="NA",
+        help="DUT Serial number.")
     parser.add_argument("--model_num", default="NA", help="DUT Model Number.")
 
+    # TODO:  Add example flag options from py-json/LANforge/add_dut.py somehow.
+    parser.add_argument(
+        '--dut_flag',
+        help='DUT flags to add',
+        default=None,
+        action='append')
+
+    # TODO:  Use lfcli_base for common arguments.
+    parser.add_argument('--debug', help='Enable debugging', default=False, action="store_true")
+    parser.add_argument('--log_level',
+                        default=None,
+                        help='Set logging level: debug | info | warning | error | critical')
+    parser.add_argument('--lf_logger_config_json',
+                        help="--lf_logger_config_json <json file> , json configuration of logger")
+
     args = parser.parse_args()
+
+    logger_config = lf_logger_config.lf_logger_config()
+    # set the logger level to requested value
+    logger_config.set_level(level=args.log_level)
+    logger_config.set_json(json_file=args.lf_logger_config_json)
+    
     new_dut = DUT(lfmgr=args.lfmgr,
                   port=args.port,
                   dut_name=args.dut_name,
                   ssid=args.ssid,
-                  sw_version = args.sw_version,
-                  hw_version = args.hw_version,
-                  serial_num = args.serial_num,
-                  model_num = args.model_num,
+                  sw_version=args.sw_version,
+                  hw_version=args.hw_version,
+                  serial_num=args.serial_num,
+                  model_num=args.model_num,
+                  dut_flags=args.dut_flag
                   )
 
     new_dut.setup()

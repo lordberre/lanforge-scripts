@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 Note: To Run this script gui should be opened with
 
@@ -30,50 +29,61 @@ Output:
     You should see build scenario with the given arguments at the end of this script.
     To verify this:
         open Chamber View -> Manage scenario
-
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
-import re
+import shlex
+import logging
+
+logger = logging.getLogger(__name__)
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_test_manager import cv_test as cv
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cv_test = cv_test_manager.cv_test
+lf_logger_config = importlib.import_module("py-scripts.lf_logger_config")
 
-class CreateChamberview(cv):
+
+class CreateChamberview(cv_test):
     def __init__(self,
                  lfmgr="localhost",
                  port="8080",
-                ):
+                 _debug_on=False,
+                 ):
         super().__init__(
-                 lfclient_host=lfmgr,
-                 lfclient_port=port,
+            lfclient_host=lfmgr,
+            lfclient_port=port,
+            debug_=_debug_on
         )
         self.lfmgr = lfmgr
         self.port = port
 
-    def clean_cv_scenario(self,type="Network-Connectivity",scenario_name=None):
-        self.rm_cv_text_blob(type,scenario_name)
+    def clean_cv_scenario(
+            self,
+            cv_type="Network-Connectivity",
+            scenario_name=None):
+        self.rm_cv_text_blob(cv_type, scenario_name)
 
     def setup(self,
-             create_scenario="",
-             line="",
-             raw_line=[]):
+              create_scenario="",
+              line="",
+              raw_line=None):
 
         if raw_line:
-            print("creating %s scenario" % create_scenario)
+            logger.info("creating %s scenario using raw lines" % create_scenario)
             for create_lines in raw_line:
-                self.pass_raw_lines_to_cv(create_scenario,create_lines[0])
+                ln = create_lines[0]
+                # print("ln: %s" % (ln))
+                self.pass_raw_lines_to_cv(create_scenario, ln)
 
-        #check for lines
+        # check for lines
         if line:
             scenario_name = create_scenario
             line = line
@@ -88,133 +98,155 @@ class CreateChamberview(cv):
             Freq = "-1"
             VLAN = ""
 
-            for i in range(len(line)):
-                if " " in line[i][0]:
-                    line[i][0] = (re.split(' ', line[i][0]))
-                elif "," in line[i][0]:
-                    line[i][0] = (re.split(',', line[i][0]))
-                elif ", " in line[i][0]:
-                    line[i][0] = (re.split(',', line[i][0]))
-                elif " ," in line[i][0]:
-                    line[i][0] = (re.split(',', line[i][0]))
-                else:
-                    print("Wrong arguments entered !")
-                    exit(1)
+            # print("line: ")
+            # pprint(line)
 
-                print("creating %s scenario" % scenario_name)
-                for j in range(len(line[i][0])):
-                    line[i][0][j] = line[i][0][j].split("=")
-                    for k in range(len(line[i][0][j])):
-                        name = line[i][0][j][k]
-                        if str(name) == "Resource" or str(name) == "Res" or str(name) == "R":
-                            Resource = line[i][0][j][k + 1]
-                        elif str(name) == "Profile" or str(name) == "Prof" or str(name) == "P":
-                            Profile = line[i][0][j][k + 1]
-                        elif str(name) == "Amount" or str(name) == "Sta" or str(name) == "A":
-                            Amount = line[i][0][j][k + 1]
-                        elif str(name) == "Uses-1" or str(name) == "U1" or str(name) == "U-1":
-                            Uses1 = line[i][0][j][k + 1]
-                        elif str(name) == "Uses-2" or str(name) == "U2" or str(name) == "U-2":
-                            Uses2 = line[i][0][j][k + 1]
-                        elif str(name) == "Freq" or str(name) == "Freq" or str(name) == "F":
-                            Freq = line[i][0][j][k + 1]
-                        elif str(name) == "DUT" or str(name) == "dut" or str(name) == "D":
-                            DUT = line[i][0][j][k + 1]
-                        elif str(name) == "DUT_Radio" or str(name) == "dr" or str(name) == "DR":
-                            DUT_Radio = line[i][0][j][k + 1]
-                        elif str(name) == "Traffic" or str(name) == "Traf" or str(name) == "T":
-                            Traffic = line[i][0][j][k + 1]
-                        elif str(name) == "VLAN" or str(name) == "Vlan" or str(name) == "V":
-                            VLAN = line[i][0][j][k + 1]
-                        else:
-                            continue
+            for item in line:
+                # print("item: ")
+                # pprint(item)
+
+                for sub_item in shlex.split(item[0]):
+                    # print("sub-item: ")
+                    # pprint(sub_item)
+
+                    sub_item = sub_item.split("=")
+                    if sub_item[0] == "Resource" or str(
+                            sub_item[0]) == "Res" or sub_item[0] == "R":
+                        Resource = sub_item[1]
+                    elif sub_item[0] == "Profile" or sub_item[0] == "Prof" or sub_item[0] == "P":
+                        Profile = sub_item[1]
+                    elif sub_item[0] == "Amount" or sub_item[0] == "Sta" or sub_item[0] == "A":
+                        Amount = sub_item[1]
+                    elif sub_item[0] == "Uses-1" or sub_item[0] == "U1" or sub_item[0] == "U-1":
+                        Uses1 = sub_item[1]
+                    elif sub_item[0] == "Uses-2" or sub_item[0] == "U2" or sub_item[0] == "U-2":
+                        Uses2 = sub_item[1]
+                    elif sub_item[0] == "Freq" or sub_item[0] == "Freq" or sub_item[0] == "F":
+                        Freq = sub_item[1]
+                    elif sub_item[0] == "DUT" or sub_item[0] == "dut" or sub_item[0] == "D":
+                        DUT = sub_item[1]
+                    elif sub_item[0] == "DUT_Radio" or sub_item[0] == "dr" or sub_item[0] == "DR":
+                        DUT_Radio = sub_item[1]
+                    elif sub_item[0] == "Traffic" or sub_item[0] == "Traf" or sub_item[0] == "T":
+                        Traffic = sub_item[1]
+                    elif sub_item[0] == "VLAN" or sub_item[0] == "Vlan" or sub_item[0] == "V":
+                        VLAN = sub_item[1]
+                    else:
+                        logger.critical("ERROR:  Unknown line argument -:%s:-" % (sub_item[0]))
+                        logger.critical("Un-supported line argument")
+                        raise ValueError("Un-supported line argument")  # Bad user input, terminate script.
+                        continue
 
                 self.add_text_blob_line(scenario_name,
-                                            Resource,
-                                            Profile,
-                                            Amount,
-                                            DUT,
-                                            DUT_Radio,
-                                            Uses1,
-                                            Uses2,
-                                            Traffic,
-                                            Freq,
-                                            VLAN
-                                            );  # To manage scenario
+                                        Resource,
+                                        Profile,
+                                        Amount,
+                                        DUT,
+                                        DUT_Radio,
+                                        Uses1,
+                                        Uses2,
+                                        Traffic,
+                                        Freq,
+                                        VLAN
+                                        )  # To manage scenario
         if not line and not raw_line:
+            logger.critical("scenario creation failed")
             raise Exception("scenario creation failed")
-            return False
 
         return True
 
-    def build(self,scenario_name):
+    def build(self, scenario_name):
         self.sync_cv()  # chamberview sync
         time.sleep(2)
         self.apply_cv_scenario(scenario_name)  # Apply scenario
-        self.show_text_blob(None, None, False) # Show changes on GUI
+        self.show_text_blob(None, None, False)  # Show changes on GUI
         self.apply_cv_scenario(scenario_name)  # Apply scenario
         self.build_cv_scenario()  # build scenario
         tries = 0
-        while (True):
+        while True:
             self.get_popup_info_and_close()
             if not self.get_cv_is_built():
                 # It can take a while to build a large scenario, so wait-time
                 # is currently max of 5 minutes.
-                print("Waiting %i/300 for Chamber-View to be built." % (tries))
+                logger.info("Waiting %i/300 for Chamber-View to be built." % tries)
                 tries += 1
-                if (tries > 300):
+                if tries > 300:
+                    self._fail("Waiting %i/300 for Chamber-View to be built." % tries)
                     break
                 time.sleep(1)
             else:
+                self._pass("completed building %s scenario" % scenario_name)
                 break
-        print("completed building %s scenario" %scenario_name)
-
 
 
 def main():
-
-    parser = argparse.ArgumentParser(
+    parser = cv_test.create_basic_argparse(
+        prog='create_chamberview.py',
+        formatter_class=argparse.RawTextHelpFormatter,
         description="""
         For Two line scenario use --line twice as shown in example, for multi line scenario
         use --line argument to create multiple lines
         \n
-           create_chamberview.py -m "localhost" -o "8080" -cs "scenario_name" 
-             --line "Resource=1.1 Profile=STA-AC Amount=1 Uses-1=wiphy0 Uses-2=AUTO Freq=-1 
-                    DUT=Test DUT_Radio=Radio-1 Traffic=http VLAN=" 
-             --line "Resource=1.1 Profile=upstream Amount=1 Uses-1=eth1 Uses-2=AUTO Freq=-1 
+           create_chamberview.py --mgr "localhost" --mgr_port "8080" -cs "scenario_name"
+             --line "Resource=1.1 Profile=STA-AC Amount=1 Uses-1=wiphy0 Uses-2=AUTO Freq=-1
                     DUT=Test DUT_Radio=Radio-1 Traffic=http VLAN="
-           ********************************      OR        ********************************             
+             --line "Resource=1.1 Profile=upstream Amount=1 Uses-1=eth1 Uses-2=AUTO Freq=-1
+                    DUT=Test DUT_Radio=Radio-1 Traffic=http VLAN="
+           ********************************      OR        ********************************
            create_chamberview.py -m "localhost" -o "8080" -cs "scenario_name"
              --raw_line "profile_link 1.1 STA-AC 10 'DUT: temp Radio-1' tcp-dl-6m-vi wiphy0,AUTO -1"
              --raw_line "profile_link 1.1 upstream 1 'DUT: temp Radio-1' tcp-dl-6m-vi eth1,AUTO -1"
-           
+
+           DUT_Radio is really the last part of the 'maps to' component of the scenario,
+           so it can also be LAN when using and Upstream profile, for instance.
+
            """)
-    parser.add_argument("-m", "--lfmgr", type=str,
-                        help="address of the LANforge GUI machine (localhost is default)")
-    parser.add_argument("-o", "--port", type=int, default=8080,
-                        help="IP Port the LANforge GUI is listening on (8080 is default)")
-    parser.add_argument("-cs", "--create_scenario", "--create_lf_scenario", type=str,
-                        help="name of scenario to be created")
+    parser.add_argument(
+        "-cs",
+        "--create_scenario",
+        "--create_lf_scenario",
+        type=str,
+        help="name of scenario to be created")
     parser.add_argument("-l", "--line", action='append', nargs='+',
                         help="line number", default=[])
     parser.add_argument("-rl", "--raw_line", action='append', nargs=1,
                         help="raw lines", default=[])
-    parser.add_argument("-ds", "--delete_scenario", default=False, action='store_true',
-                        help="delete scenario (by default: False)")
+    parser.add_argument(
+        "-ds",
+        "--delete_scenario",
+        default=False,
+        action='store_true',
+        help="delete scenario (by default: False)")
+
     args = parser.parse_args()
 
+    logger_config = lf_logger_config.lf_logger_config()
+    # set the logger level to requested value
+    logger_config.set_level(level=args.log_level)
+    logger_config.set_json(json_file=args.lf_logger_config_json)
 
-    Create_Chamberview = CreateChamberview(lfmgr=args.lfmgr,
-                                           port=args.port,
+    Create_Chamberview = CreateChamberview(lfmgr=args.mgr,
+                                           _debug_on=args.debug,
+                                           port=args.mgr_port,
                                            )
     if args.delete_scenario:
-        Create_Chamberview.clean_cv_scenario(type="Network-Connectivity", scenario_name=args.create_scenario)
+        Create_Chamberview.clean_cv_scenario(
+            cv_type="Network-Connectivity",
+            scenario_name=args.create_scenario)
 
     Create_Chamberview.setup(create_scenario=args.create_scenario,
                              line=args.line,
                              raw_line=args.raw_line)
     Create_Chamberview.build(args.create_scenario)
 
+    # TODO:  Build the scenario (cv click the 'Build Scenario' button, wait until build has completed
+    # TODO:  Find and admin up all wlan* and sta* ports,
+    # TODO:  Verify they admin up and get IP address.
+
+    if Create_Chamberview.passes():
+        Create_Chamberview.exit_success()
+    else:
+        Create_Chamberview.exit_fail()
 
 
 if __name__ == "__main__":

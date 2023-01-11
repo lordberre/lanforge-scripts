@@ -4,3 +4,6 @@
 *~
 *.iml
 **/*.iml
+.idea
+*.env
+*.zip

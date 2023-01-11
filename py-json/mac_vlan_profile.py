@@ -1,15 +1,21 @@
-
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-from LANforge import LFRequest
-from LANforge import LFUtils
-from LANforge import set_port
-import pprint
+import sys
+import os
+import importlib
 from pprint import pprint
+from pprint import pformat
 import time
+import logging
 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+LFRequest = importlib.import_module("py-json.LANforge.LFRequest")
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+set_port = importlib.import_module("py-json.LANforge.set_port")
 
+logger = logging.getLogger(__name__)
 
 
 class MACVLANProfile(LFCliBase):
@@ -17,15 +23,16 @@ class MACVLANProfile(LFCliBase):
                  local_realm,
                  macvlan_parent="eth1",
                  num_macvlans=1,
-                 admin_down=False,
+                 shelf=1,
+                 resource=1,
                  dhcp=False,
                  debug_=False):
         super().__init__(lfclient_host, lfclient_port, debug_)
         self.local_realm = local_realm
         self.num_macvlans = num_macvlans
         self.macvlan_parent = macvlan_parent
-        self.resource = 1
-        self.shelf = 1
+        self.resource = resource
+        self.shelf = shelf
         self.desired_macvlans = []
         self.created_macvlans = []
         self.dhcp = dhcp
@@ -47,11 +54,13 @@ class MACVLANProfile(LFCliBase):
 
     def add_named_flags(self, desired_list, command_ref):
         if desired_list is None:
+            logger.critical("addNamedFlags wants a list of desired flag names")
             raise ValueError("addNamedFlags wants a list of desired flag names")
         if len(desired_list) < 1:
-            print("addNamedFlags: empty desired list")
+            logger.info("addNamedFlags: empty desired list")
             return 0
         if (command_ref is None) or (len(command_ref) < 1):
+            logger.critical("addNamedFlags wants a maps of flag values")
             raise ValueError("addNamedFlags wants a maps of flag values")
 
         result = 0
@@ -60,7 +69,8 @@ class MACVLANProfile(LFCliBase):
                 continue
             if name not in command_ref:
                 if self.debug:
-                    pprint(command_ref)
+                    logger.debug(pformat(command_ref))
+                logger.critical("flag %s not in map" % name)
                 raise ValueError("flag %s not in map" % name)
             result += command_ref[name]
 
@@ -73,6 +83,7 @@ class MACVLANProfile(LFCliBase):
         if (param_name is None) or (param_name == ""):
             return
         if command_name not in self.COMMANDS:
+            logger.critical("Command name name [%s] not defined in %s" % (command_name, self.COMMANDS))
             raise ValueError("Command name name [%s] not defined in %s" % (command_name, self.COMMANDS))
             # return
         if command_name == "set_port":
@@ -85,42 +96,43 @@ class MACVLANProfile(LFCliBase):
         if (param_name is None) or (param_name == ""):
             return
         if command_name not in self.COMMANDS:
-            print("Command name name [%s] not defined in %s" % (command_name, self.COMMANDS))
+            logger.info("Command name name [%s] not defined in %s" % (command_name, self.COMMANDS))
             return
 
         elif command_name == "set_port":
             if (param_name not in set_port.set_port_current_flags) and (
                     param_name not in set_port.set_port_cmd_flags) and (
                     param_name not in set_port.set_port_interest_flags):
-                print("Parameter name [%s] not defined in set_port.py" % param_name)
+                logger.info("Parameter name [%s] not defined in set_port.py" % param_name)
                 if self.debug:
-                    pprint(set_port.set_port_cmd_flags)
-                    pprint(set_port.set_port_current_flags)
-                    pprint(set_port.set_port_interest_flags)
+                    logger.debug(pformat(set_port.set_port_cmd_flags))
+                    logger.debug(pformat(set_port.set_port_current_flags))
+                    logger.debug(pformat(set_port.set_port_interest_flags))
                 return
-            if (param_name in set_port.set_port_cmd_flags):
+            if param_name in set_port.set_port_cmd_flags:
                 if (value == 1) and (param_name not in self.desired_set_port_cmd_flags):
                     self.desired_set_port_cmd_flags.append(param_name)
                 elif value == 0:
                     self.desired_set_port_cmd_flags.remove(param_name)
-            elif (param_name in set_port.set_port_current_flags):
+            elif param_name in set_port.set_port_current_flags:
                 if (value == 1) and (param_name not in self.desired_set_port_current_flags):
                     self.desired_set_port_current_flags.append(param_name)
                 elif value == 0:
                     self.desired_set_port_current_flags.remove(param_name)
-            elif (param_name in set_port.set_port_interest_flags):
+            elif param_name in set_port.set_port_interest_flags:
                 if (value == 1) and (param_name not in self.desired_set_port_interest_flags):
                     self.desired_set_port_interest_flags.append(param_name)
                 elif value == 0:
                     self.desired_set_port_interest_flags.remove(param_name)
             else:
+                logger.critical("Unknown param name: {param_name} ".format(param_name=param_name))
                 raise ValueError("Unknown param name: " + param_name)
 
     def create(self, admin_down=False, debug=False, sleep_time=1):
-        print("Creating MACVLANs...")
+        logger.info("Creating MACVLANs...")
         req_url = "/cli-json/add_mvlan"
 
-        if not self.dhcp and self.first_ip_addr is not None and self.netmask is not None and self.gateway is not None:
+        if not self.dhcp and self.first_ip_addr and self.netmask and self.gateway:
             self.desired_set_port_interest_flags.append("ip_address")
             self.desired_set_port_interest_flags.append("ip_Mask")
             self.desired_set_port_interest_flags.append("ip_gateway")
@@ -128,7 +140,7 @@ class MACVLANProfile(LFCliBase):
                                                  num_ips=self.num_macvlans)
 
         if self.dhcp:
-            print("Using DHCP")
+            logger.info("Using DHCP")
             self.desired_set_port_current_flags.append("use_dhcp")
             self.desired_set_port_interest_flags.append("dhcp")
 
@@ -145,7 +157,7 @@ class MACVLANProfile(LFCliBase):
                 "mac": "xx:xx:xx:*:*:xx",
                 "port": self.local_realm.name_to_eid(self.macvlan_parent)[2],
                 "index": int(self.desired_macvlans[i][self.desired_macvlans[i].index('#') + 1:]),
-                #"dhcp": self.dhcp,
+                # "dhcp": self.dhcp,
                 "flags": None
             }
             if admin_down:
@@ -153,32 +165,34 @@ class MACVLANProfile(LFCliBase):
             else:
                 data["flags"] = 0
             self.created_macvlans.append("%s.%s.%s#%d" % (self.shelf, self.resource,
-                                                          self.macvlan_parent, int(
-                self.desired_macvlans[i][self.desired_macvlans[i].index('#') + 1:])))
+                                                          self.macvlan_parent,
+                                                          int(self.desired_macvlans[i][
+                                                              self.desired_macvlans[i].index('#') + 1:])))
             self.local_realm.json_post(req_url, data)
             time.sleep(sleep_time)
 
-        LFUtils.wait_until_ports_appear(base_url=self.lfclient_url, port_list=self.created_macvlans)
-        print(self.created_macvlans)
+        if not LFUtils.wait_until_ports_appear(base_url=self.lfclient_url, port_list=self.created_macvlans, debug=debug):
+            return False
 
-        time.sleep(5)
+        print(self.created_macvlans)
 
         for i in range(len(self.created_macvlans)):
             eid = self.local_realm.name_to_eid(self.created_macvlans[i])
             name = eid[2]
             self.set_port_data["port"] = name  # for set_port calls.
-            if not self.dhcp and self.first_ip_addr is not None and self.netmask is not None \
-                    and self.gateway is not None:
+            if not self.dhcp and self.first_ip_addr and self.netmask and self.gateway:
                 self.set_port_data["ip_addr"] = self.ip_list[i]
                 self.set_port_data["netmask"] = self.netmask
                 self.set_port_data["gateway"] = self.gateway
             set_port_r.addPostData(self.set_port_data)
-            json_response = set_port_r.jsonPost(debug)
+            set_port_r.jsonPost(debug)
             time.sleep(sleep_time)
 
+        return True
+
     def cleanup(self):
-        print("Cleaning up MACVLANs...")
-        print(self.created_macvlans)
+        logger.info("Cleaning up MACVLANs...")
+        logger.info(self.created_macvlans)
         for port_eid in self.created_macvlans:
             self.local_realm.rm_port(port_eid, check_exists=True)
             time.sleep(.02)

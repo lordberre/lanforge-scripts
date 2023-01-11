@@ -1,15 +1,17 @@
-
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-from LANforge import LFRequest
-from LANforge import LFUtils
-from LANforge import set_port
-import pprint
+import sys
+import os
+import importlib
 from pprint import pprint
 import time
 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+LFRequest = importlib.import_module("py-json.LANforge.LFRequest")
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+set_port = importlib.import_module("py-json.LANforge.set_port")
 
 
 class QVLANProfile(LFCliBase):
@@ -17,7 +19,6 @@ class QVLANProfile(LFCliBase):
                  local_realm,
                  qvlan_parent="eth1",
                  num_qvlans=1,
-                 admin_down=False,
                  dhcp=False,
                  debug_=False):
         super().__init__(lfclient_host, lfclient_port, debug_)
@@ -96,17 +97,17 @@ class QVLANProfile(LFCliBase):
                     pprint(set_port.set_port_current_flags)
                     pprint(set_port.set_port_interest_flags)
                 return
-            if (param_name in set_port.set_port_cmd_flags):
+            if param_name in set_port.set_port_cmd_flags:
                 if (value == 1) and (param_name not in self.desired_set_port_cmd_flags):
                     self.desired_set_port_cmd_flags.append(param_name)
                 elif value == 0:
                     self.desired_set_port_cmd_flags.remove(param_name)
-            elif (param_name in set_port.set_port_current_flags):
+            elif param_name in set_port.set_port_current_flags:
                 if (value == 1) and (param_name not in self.desired_set_port_current_flags):
                     self.desired_set_port_current_flags.append(param_name)
                 elif value == 0:
                     self.desired_set_port_current_flags.remove(param_name)
-            elif (param_name in set_port.set_port_interest_flags):
+            elif param_name in set_port.set_port_interest_flags:
                 if (value == 1) and (param_name not in self.desired_set_port_interest_flags):
                     self.desired_set_port_interest_flags.append(param_name)
                 elif value == 0:
@@ -114,11 +115,11 @@ class QVLANProfile(LFCliBase):
             else:
                 raise ValueError("Unknown param name: " + param_name)
 
-    def create(self, admin_down=False, debug=False, sleep_time=1):
-        print("Creating qvlans...")
+    def create(self, debug=False, sleep_time=1):
+        print("Creating 802.1q Vlans...")
         req_url = "/cli-json/add_vlan"
 
-        if not self.dhcp and self.first_ip_addr is not None and self.netmask is not None and self.gateway is not None:
+        if not self.dhcp and self.first_ip_addr and self.netmask and self.gateway:
             self.desired_set_port_interest_flags.append("ip_address")
             self.desired_set_port_interest_flags.append("ip_Mask")
             self.desired_set_port_interest_flags.append("ip_gateway")
@@ -136,20 +137,37 @@ class QVLANProfile(LFCliBase):
                                                               set_port.set_port_interest_flags)
         set_port_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_port")
 
+        qv_parent_bare = self.local_realm.name_to_eid(self.qvlan_parent)[2];
         for i in range(len(self.desired_qvlans)):
             data = {
                 "shelf": self.shelf,
                 "resource": self.resource,
-                "port": self.local_realm.name_to_eid(self.qvlan_parent)[2],
-                "vid": i+1
+                "port": qv_parent_bare,
+                "vid": i + 1
             }
-            self.created_qvlans.append("%s.%s.%s#%d" % (self.shelf, self.resource,
-                                                          self.qvlan_parent, int(
-                self.desired_qvlans[i][self.desired_qvlans[i].index('#') + 1:])))
+            self.created_qvlans.append("%s.%s.%s.%d" % (self.shelf, self.resource,
+                                                        qv_parent_bare, i + 1))
             self.local_realm.json_post(req_url, data)
             time.sleep(sleep_time)
 
+        if not LFUtils.wait_until_ports_appear(base_url=self.lfclient_url, port_list=self.created_qvlans, debug=debug):
+            return False
+
         print(self.created_qvlans)
+
+        for i in range(len(self.created_qvlans)):
+            eid = self.local_realm.name_to_eid(self.created_qvlans[i])
+            name = eid[2]
+            self.set_port_data["port"] = name  # for set_port calls.
+            if not self.dhcp and self.first_ip_addr and self.netmask and self.gateway:
+                self.set_port_data["ip_addr"] = self.ip_list[i]
+                self.set_port_data["netmask"] = self.netmask
+                self.set_port_data["gateway"] = self.gateway
+            set_port_r.addPostData(self.set_port_data)
+            set_port_r.jsonPost(debug)
+            time.sleep(sleep_time)
+
+        return True
 
     def cleanup(self):
         print("Cleaning up qvlans...")

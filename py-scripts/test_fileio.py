@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 NAME: test_fileio.py
 
@@ -9,11 +8,14 @@ test_fileio.py will create stations or macvlans with matching fileio endpoints t
 This script will create a variable number of stations or macvlans to test fileio traffic. Pre-existing stations and
 macvlans can be used as well. Command line options are available to update cross-connects as well as using a list of
 existing cross-connects if desired. if none are given, cross-connects and endpoints will be created by the script.
-Modes such as read-only, write-only, or both can be specified as well as ip addresses and starting numbers for sequential
+Modes such as read-only, write-only, or both can be specified along with ip addresses and starting numbers for sequential
 stations or macvlans that are created in case of limited or pre-existing configurations. The test that is run during
 this script will depend on the mode used, a read-only test will check the read-bps attribute, write-only will check write-bps
 and both will check both attributes. If the relevant attributes increase over the duration of the test it will pass,
 otherwise it will fail.
+
+SETUP:
+https://candelatech.atlassian.net/wiki/spaces/~261521142/pages/979435521/Lanforge+File-IO+Test+Notes
 
 EXAMPLE:
 ./test_fileio.py --macvlan_parent <port> --num_ports <num ports> --use_macvlans 
@@ -22,47 +24,47 @@ EXAMPLE:
 ./test_fileio.py --macvlan_parent eth2 --num_ports 3 --use_macvlans --first_mvlan_ip 192.168.92.13 
                  --netmask 255.255.255.0 --gateway 192.168.92.1
 
+TODO: Create external document
 
 Use './test_fileio.py --help' to see command line usage and options
 Copyright 2021 Candela Technologies Inc
 License: Free to distribute and modify. LANforge systems must be licensed.
 """
-
 import sys
+import os
+import importlib
+import argparse
+import time
+import datetime
+
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append('../py-json')
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-# import argparse
-from LANforge.lfcli_base import LFCliBase
-from LANforge.LFUtils import *
-from LANforge import LFUtils
-from LANforge import add_file_endp
-from LANforge.add_file_endp import *
-import argparse
-import realm
-import time
-import datetime
-import pprint
-import os
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+add_file_endp = importlib.import_module("py-json.LANforge.add_file_endp")
+fe_fstype = add_file_endp.fe_fstype
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
+lf_kpi_csv = importlib.import_module("py-scripts.lf_kpi_csv")
+lf_report = importlib.import_module("py-scripts.lf_report")
 
 
-class FileIOTest(LFCliBase):
+class FileIOTest(Realm):
     def __init__(self, host, port, ssid, security, password,
                  number_template="00000",
                  radio="wiphy0",
                  fs_type=fe_fstype.EP_FE_NFS4.name,
-                 min_rw_size=64*1024,
-                 max_rw_size=64*1024,
-                 min_file_size=25*1024*1024,
-                 max_file_size=25*1024*1024,
-                 min_read_rate_bps=1000*1000,
-                 max_read_rate_bps=1000*1000,
+                 min_rw_size=64 * 1024,
+                 max_rw_size=64 * 1024,
+                 min_file_size=25 * 1024 * 1024,
+                 max_file_size=25 * 1024 * 1024,
+                 min_read_rate_bps=None,
+                 max_read_rate_bps=None,
                  min_write_rate_bps="1G",
-                 max_write_rate_bps=1000*1000,
+                 max_write_rate_bps=None,
                  directory="AUTO",
                  test_duration="5m",
                  upstream_port="eth1",
@@ -72,20 +74,26 @@ class FileIOTest(LFCliBase):
                  first_mvlan_ip=None,
                  netmask=None,
                  gateway=None,
+                 shelf=1,
+                 resource=1,
                  dhcp=True,
                  use_macvlans=False,
                  use_test_groups=False,
                  write_only_test_group=None,
                  read_only_test_group=None,
-                 port_list=[],
+                 port_list=None,
                  ip_list=None,
                  connections_per_port=1,
                  mode="both",
-                 update_group_args={"name": None, "action": None, "cxs": None},
+                 update_group_args=None,
                  _debug_on=False,
                  _exit_on_error=False,
                  _exit_on_fail=False):
-        super().__init__(host, port, _debug=_debug_on, _exit_on_fail=_exit_on_fail)
+        super().__init__(host, port, debug_=_debug_on, _exit_on_fail=_exit_on_fail)
+        if port_list is None:
+            port_list = []
+        if update_group_args is None:
+            update_group_args = {"name": None, "action": None, "cxs": None}
         self.host = host
         self.port = port
         self.radio = radio
@@ -103,7 +111,7 @@ class FileIOTest(LFCliBase):
         self.netmask = netmask
         self.gateway = gateway
         if self.use_macvlans:
-            if macvlan_parent is not None:
+            if macvlan_parent:
                 self.macvlan_parent = macvlan_parent
                 self.port_list = port_list
         else:
@@ -112,38 +120,28 @@ class FileIOTest(LFCliBase):
         self.use_test_groups = use_test_groups
         if self.use_test_groups:
             if self.mode == "write":
-                if write_only_test_group is not None:
+                if write_only_test_group:
                     self.write_only_test_group = write_only_test_group
                 else:
                     raise ValueError("--write_only_test_group must be used to set test group name")
             if self.mode == "read":
-                if read_only_test_group is not None:
+                if read_only_test_group:
                     self.read_only_test_group = read_only_test_group
                 else:
                     raise ValueError("--read_only_test_group must be used to set test group name")
             if self.mode == "both":
-                if write_only_test_group is not None and read_only_test_group is not None:
+                if write_only_test_group and read_only_test_group:
                     self.write_only_test_group = write_only_test_group
                     self.read_only_test_group = read_only_test_group
                 else:
                     raise ValueError("--write_only_test_group and --read_only_test_group "
                                      "must be used to set test group names")
 
-        #self.min_rw_size = self.parse_size(min_rw_size)
-        #self.max_rw_size = self.parse_size(max_rw_size)
-        #self.min_file_size = self.parse_size(min_file_size)
-        #self.min_file_size = self.parse_size(min_file_size)
-        #self.min_read_rate_bps = self.parse_size_bps(min_read_rate_bps)
-        # self.max_read_rate_bps = self.sisize_bps(max_read_rate_bps)
-        # self.min_write_rate_bps = self.parse_size_bps(min_write_rate_bps)
-        #self.max_write_rate_bps = self.parse_size_bps(max_write_rate_bps)
-
-        self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
-        self.wo_profile = self.local_realm.new_fio_endp_profile()
-        self.mvlan_profile = self.local_realm.new_mvlan_profile()
+        self.wo_profile = self.new_fio_endp_profile()
+        self.mvlan_profile = self.new_mvlan_profile()
 
         if not self.use_macvlans and len(self.port_list) > 0:
-            self.station_profile = self.local_realm.new_station_profile()
+            self.station_profile = self.new_station_profile()
             self.station_profile.lfclient_url = self.lfclient_url
             self.station_profile.ssid = self.ssid
             self.station_profile.ssid_pass = self.password
@@ -174,19 +172,21 @@ class FileIOTest(LFCliBase):
             self.mvlan_profile.netmask = netmask
             self.mvlan_profile.first_ip_addr = first_mvlan_ip
             self.mvlan_profile.gateway = gateway
+            self.mvlan_profile.shelf = shelf
+            self.mvlan_profile.resource = resource
 
         self.created_ports = []
         if self.use_test_groups:
-            if self.mode is not None:
+            if self.mode:
                 if self.mode == "write":
-                    self.wo_tg_profile = self.local_realm.new_test_group_profile()
+                    self.wo_tg_profile = self.new_test_group_profile()
                     self.wo_tg_profile.group_name = self.write_only_test_group
                 elif self.mode == "read":
-                    self.ro_tg_profile = self.local_realm.new_test_group_profile()
+                    self.ro_tg_profile = self.new_test_group_profile()
                     self.ro_tg_profile.group_name = self.read_only_test_group
                 elif self.mode == "both":
-                    self.wo_tg_profile = self.local_realm.new_test_group_profile()
-                    self.ro_tg_profile = self.local_realm.new_test_group_profile()
+                    self.wo_tg_profile = self.new_test_group_profile()
+                    self.ro_tg_profile = self.new_test_group_profile()
                     self.wo_tg_profile.group_name = self.write_only_test_group
                     self.ro_tg_profile.group_name = self.read_only_test_group
                 else:
@@ -194,8 +194,8 @@ class FileIOTest(LFCliBase):
             else:
                 raise ValueError("Mode ( read, write, or both ) must be specified")
 
-        if update_group_args is not None and update_group_args['name'] is not None:
-            temp_tg = self.local_realm.new_test_group_profile()
+        if update_group_args and update_group_args['name']:
+            temp_tg = self.new_test_group_profile()
             temp_cxs = update_group_args['cxs'].split(',')
             if update_group_args['action'] == "add":
                 temp_tg.group_name = update_group_args['name']
@@ -238,65 +238,63 @@ class FileIOTest(LFCliBase):
                     if len(self.ro_tg_profile.list_cxs()) > 0:
                         self.ro_tg_cx_exists = True
 
-    def __compare_vals(self, val_list):
+    def compare_vals(self, val_list):
         passes = 0
         expected_passes = 0
-        # print(val_list)
         for item in val_list:
             expected_passes += 1
-            # print(item)
-            if item[0] == 'r':
-                # print("TEST", item,
-                #       val_list[item]['read-bps'],
-                #       self.ro_profile.min_read_rate_bps,
-                #       val_list[item]['read-bps'] > self.ro_profile.min_read_rate_bps)
-
-                if val_list[item]['read-bps'] > self.wo_profile.min_read_rate_bps:
-                    passes += 1
+            if val_list[item]['read-bps'] + val_list[item]['write-bps'] > 0:
+                if item[0] == 'r':
+                    if int(val_list[item]['read-bps']) > int(self.wo_profile.min_read_rate_bps):
+                        print('%s Pass: %s' % (item, val_list[item]))
+                        passes += 1
+                    else:
+                        print('%s Fail: %s' % (item, val_list[item]))
+                        print(int(val_list[item]['read-bps']) / int(self.wo_profile.min_read_rate_bps))
+                if item[0] == 'w':
+                    if int(val_list[item]['write-bps']) > int(self.wo_profile.min_write_rate_bps):
+                        print('%s Pass: %s' % (item, val_list[item]))
+                        passes += 1
+                    else:
+                        print('%s Fail: %s' % (item, val_list[item]))
+                        print(int(val_list[item]['write-bps']) / int(self.wo_profile.min_write_rate_bps))
             else:
-                # print("TEST", item,
-                #       val_list[item]['write-bps'],
-                #       self.wo_profile.min_write_rate_bps,
-                #       val_list[item]['write-bps'] > self.wo_profile.min_write_rate_bps)
-
-                if val_list[item]['write-bps'] > self.wo_profile.min_write_rate_bps:
-                    passes += 1
-            if passes == expected_passes:
                 return True
-            else:
-                return False
+        if passes == expected_passes:
+            return True
         else:
+            if self.debug:
+                print('passes: %s, expected passes: %s' % (passes, expected_passes))
+                print('FAIL')
+                print(val_list)
+                print(self.wo_profile.min_read_rate_bps)
+                print(self.wo_profile.min_write_rate_bps)
             return False
 
-    def __get_values(self):
+    def get_values(self):
         time.sleep(3)
         if self.mode == "write":
-            cx_list = self.json_get("fileio/%s?fields=write-bps,read-bps" % (
-                                        ','.join(self.wo_profile.created_cx.keys())), debug_=self.debug)
+            cx_list = self.json_get("fileio/%s?fields=write-bps" % (
+                ','.join(self.wo_profile.created_cx.keys())), debug_=self.debug)
         elif self.mode == "read":
-            cx_list = self.json_get("fileio/%s?fields=write-bps,read-bps" % (
-                                        ','.join(self.ro_profile.created_cx.keys())), debug_=self.debug)
+            cx_list = self.json_get("fileio/%s?fields=read-bps" % (
+                ','.join(self.ro_profile.created_cx.keys())), debug_=self.debug)
         else:
             cx_list = self.json_get("fileio/%s,%s?fields=write-bps,read-bps" % (
-                                        ','.join(self.wo_profile.created_cx.keys()),
-                                        ','.join(self.ro_profile.created_cx.keys())), debug_=self.debug)
-        # print(cx_list)
-        # print("==============\n", cx_list, "\n==============")
+                ','.join(self.wo_profile.created_cx.keys()),
+                ','.join(self.ro_profile.created_cx.keys())), debug_=self.debug)
         cx_map = {}
-        # pprint.pprint(cx_list)
-        if cx_list is not None:
+        if cx_list:
             cx_list = cx_list['endpoint']
             for i in cx_list:
                 for item, value in i.items():
-                    # print(item, value)
-                    cx_map[self.local_realm.name_to_eid(item)[2]] = {"read-bps": value['read-bps'], "write-bps": value['write-bps']}
-        # print(cx_map)
+                    cx_map[self.name_to_eid(item)[2]] = {"read-bps": value['read-bps'],
+                                                         "write-bps": value['write-bps']}
         return cx_map
 
     def build(self):
         # Build stations
         if self.use_macvlans:
-            print("Creating MACVLANs")
             self.mvlan_profile.create(admin_down=False, sleep_time=.5, debug=self.debug)
             self._pass("PASS: MACVLAN build finished")
             self.created_ports += self.mvlan_profile.created_macvlans
@@ -312,13 +310,12 @@ class FileIOTest(LFCliBase):
             self.created_ports += self.station_profile.station_names
 
         if len(self.ip_list) > 0:
-            # print("++++++++++++++++\n", self.ip_list, "++++++++++++++++\n")
             for num_port in range(len(self.port_list)):
                 if self.ip_list[num_port] != 0:
-                    if self.gateway is not None and self.netmask is not None:
-                        shelf = self.local_realm.name_to_eid(self.port_list[num_port])[0]
-                        resource = self.local_realm.name_to_eid(self.port_list[num_port])[1]
-                        port = self.local_realm.name_to_eid(self.port_list[num_port])[2]
+                    if self.gateway and self.netmask:
+                        shelf = self.name_to_eid(self.port_list[num_port])[0]
+                        resource = self.name_to_eid(self.port_list[num_port])[1]
+                        port = self.name_to_eid(self.port_list[num_port])[2]
                         req_url = "/cli-json/set_port"
                         data = {
                             "shelf": shelf,
@@ -328,28 +325,28 @@ class FileIOTest(LFCliBase):
                             "netmask": self.netmask,
                             "gateway": self.gateway
                         }
-                        self.local_realm.json_post(req_url, data)
+                        self.json_post(req_url, data)
                         self.created_ports.append("%s.%s.%s" % (shelf, resource, port))
                     else:
                         raise ValueError("Netmask and gateway must be specified")
 
-        # if use test groups and test group does not exist, create cxs, create test group, assign to test group
-        # if use test groups and test group exists and no cxs, create cxs, assign to test group
+        # if use test groups and test group do not exist, create cxs, create test group, assign to test group
+        # if use test groups and test group exist and no cxs, create cxs, assign to test group
         # if use test groups and test group exist and cxs exist, do nothing
         # if not use test groups, create cxs
-        if self.mode is not None:
+        if self.mode:
             if self.use_test_groups:
                 if self.mode == "write":
-                    if self.wo_tg_exists:
-                        if not self.wo_tg_cx_exists:
-                            print("Creating Write Only CXs")
-                            self.wo_profile.create(ports=self.created_ports, connections_per_port=self.connections_per_port,
-                                                   sleep_time=.5, debug_=self.debug,
-                                                   suppress_related_commands_=None)
-                            time.sleep(1)
-                            print("Adding cxs to %s" % self.wo_tg_profile.group_name)
-                            for cx in self.wo_profile.created_cx.values():
-                                self.wo_tg_profile.add_cx(cx)
+                    if self.wo_tg_exists and not self.wo_tg_cx_exists:
+                        print("Creating Write Only CXs")
+                        self.wo_profile.create(ports=self.created_ports,
+                                               connections_per_port=self.connections_per_port,
+                                               sleep_time=.5, debug_=self.debug,
+                                               suppress_related_commands_=None)
+                        time.sleep(1)
+                        print("Adding cxs to %s" % self.wo_tg_profile.group_name)
+                        for cx in self.wo_profile.created_cx.values():
+                            self.wo_tg_profile.add_cx(cx)
                     else:
                         print("Creating Write Only CXs")
                         self.wo_profile.create(ports=self.created_ports, connections_per_port=self.connections_per_port,
@@ -365,7 +362,8 @@ class FileIOTest(LFCliBase):
                     if self.ro_tg_exists:
                         if not self.ro_tg_cx_exists:
                             print("Creating Read Only CXs")
-                            self.ro_profile.create(ports=self.created_ports, connections_per_port=self.connections_per_port,
+                            self.ro_profile.create(ports=self.created_ports,
+                                                   connections_per_port=self.connections_per_port,
                                                    sleep_time=.5, debug_=self.debug,
                                                    suppress_related_commands_=None)
                             time.sleep(1)
@@ -387,7 +385,8 @@ class FileIOTest(LFCliBase):
                     if self.wo_tg_exists:
                         if not self.wo_tg_cx_exists:
                             print("Creating Write Only CXs")
-                            self.wo_profile.create(ports=self.created_ports, connections_per_port=self.connections_per_port,
+                            self.wo_profile.create(ports=self.created_ports,
+                                                   connections_per_port=self.connections_per_port,
                                                    sleep_time=.5, debug_=self.debug,
                                                    suppress_related_commands_=None)
                             time.sleep(1)
@@ -408,7 +407,8 @@ class FileIOTest(LFCliBase):
                     if self.ro_tg_exists:
                         if not self.ro_tg_cx_exists:
                             print("Creating Read Only CXs")
-                            self.ro_profile.create(ports=self.created_ports, connections_per_port=self.connections_per_port,
+                            self.ro_profile.create(ports=self.created_ports,
+                                                   connections_per_port=self.connections_per_port,
                                                    sleep_time=.5, debug_=self.debug,
                                                    suppress_related_commands_=None)
                             time.sleep(1)
@@ -427,7 +427,7 @@ class FileIOTest(LFCliBase):
                         for cx in self.ro_profile.created_cx.values():
                             self.ro_tg_profile.add_cx(cx)
                 else:
-                    raise ValueError("Uknown mode used, must be (read, write, both)")
+                    raise ValueError("Unknown mode used, must be (read, write, both)")
             else:
                 if self.mode == "write":
                     print("Creating Write Only CXs")
@@ -455,18 +455,15 @@ class FileIOTest(LFCliBase):
 
     def start(self, print_pass=False, print_fail=False):
         temp_ports = self.created_ports.copy()
-        #temp_stas.append(self.local_realm.name_to_eid(self.upstream_port)[2])
         if not self.use_macvlans:
             self.station_profile.admin_up()
         else:
             self.mvlan_profile.admin_up()
-        if self.local_realm.wait_for_ip(temp_ports, debug=self.debug):
+        if self.wait_for_ip(temp_ports, debug=self.debug):
             self._pass("All ports got IPs", print_pass)
         else:
             self._fail("Ports failed to get IPs", print_fail)
-        cur_time = datetime.datetime.now()
-        # print("Got Values")
-        end_time = self.local_realm.parse_time(self.test_duration) + cur_time
+
         if self.use_test_groups:
             if self.mode == "write":
                 self.wo_tg_profile.start_group()
@@ -485,32 +482,6 @@ class FileIOTest(LFCliBase):
                 self.wo_profile.start_cx()
                 time.sleep(2)
                 self.ro_profile.start_cx()
-
-        passes = 0
-        expected_passes = 0
-        print("Starting Test...")
-        while cur_time < end_time:
-            interval_time = cur_time + datetime.timedelta(seconds=1)
-            while cur_time < interval_time:
-                cur_time = datetime.datetime.now()
-                time.sleep(1)
-
-            new_rx_values = self.__get_values()
-            # exit(1)
-            # print(new_rx_values)
-            # print("\n-----------------------------------")
-            # print(cur_time, end_time, cur_time + datetime.timedelta(minutes=1))
-            # print("-----------------------------------\n")
-            expected_passes += 1
-            if self.__compare_vals(new_rx_values):
-                passes += 1
-            else:
-                self._fail("FAIL: Not all stations increased traffic", print_fail)
-                # break
-            # old_rx_values = new_rx_values
-            cur_time = datetime.datetime.now()
-        if passes == expected_passes:
-            self._pass("PASS: All tests passes", print_pass)
 
     def stop(self):
         if self.use_test_groups:
@@ -583,7 +554,7 @@ class FileIOTest(LFCliBase):
 
 
 def main():
-    parser = LFCliBase.create_bare_argparse(
+    parser = Realm.create_bare_argparse(
         prog='test_fileio.py',
         # formatter_class=argparse.RawDescriptionHelpFormatter,
         formatter_class=argparse.RawTextHelpFormatter,
@@ -618,17 +589,17 @@ Generic command layout:
     parser.add_argument('--passwd', '--password', '--key', help='WiFi passphrase/password/key')
     parser.add_argument('--security', help='security type to use for ssid { wep | wpa | wpa2 | wpa3 | open }')
     parser.add_argument('-u', '--upstream_port',
-                  help='non-station port that generates traffic: <resource>.<port>, e.g: 1.eth1',
-                  default='1.eth1')
+                        help='non-station port that generates traffic: <resource>.<port>, e.g: 1.eth1',
+                        default='1.eth1')
     parser.add_argument('--test_duration', help='sets the duration of the test', default="5m")
     parser.add_argument('--fs_type', help='endpoint type', default="fe_nfs4")
-    parser.add_argument('--min_rw_size', help='minimum read/write size', default=64*1024)
-    parser.add_argument('--max_rw_size', help='maximum read/write size', default=64*1024)
-    parser.add_argument('--min_file_size', help='minimum file size', default=50*1024*1024)
-    parser.add_argument('--max_file_size', help='maximum file size', default=50*1024*1024)
-    parser.add_argument('--min_read_rate_bps', help='minimum bps read rate', default=10e9)
-    parser.add_argument('--max_read_rate_bps', help='maximum bps read rate', default=10e9)
-    parser.add_argument('--min_write_rate_bps', help='minimum bps write rate', default=10e9)
+    parser.add_argument('--min_rw_size', help='minimum read/write size', default=64 * 1024)
+    parser.add_argument('--max_rw_size', help='maximum read/write size', default=64 * 1024)
+    parser.add_argument('--min_file_size', help='minimum file size', default=50 * 1024 * 1024)
+    parser.add_argument('--max_file_size', help='maximum file size', default=50 * 1024 * 1024)
+    parser.add_argument('--min_read_rate_bps', help='minimum bps read rate', default=10e6)
+    parser.add_argument('--max_read_rate_bps', help='maximum bps read rate', default=10e6)
+    parser.add_argument('--min_write_rate_bps', help='minimum bps write rate', default=10e6)
     parser.add_argument('--max_write_rate_bps', help='maximum bps write rate', default="1G")
     parser.add_argument('--directory', help='--directory directory to read/write in. Absolute path suggested',
                         default="AUTO")
@@ -652,60 +623,102 @@ Generic command layout:
     parser.add_argument('--read_only_test_group', help='specifies name to use for read only test group', default=None)
     parser.add_argument('--write_only_test_group', help='specifies name to use for write only test group', default=None)
     parser.add_argument('--mode', help='write,read,both', default='both', type=str)
+    # kpi_csv arguments
+    parser.add_argument(
+        "--test_rig",
+        default="",
+        help="test rig for kpi.csv, testbed that the tests are run on")
+    parser.add_argument(
+        "--test_tag",
+        default="",
+        help="test tag for kpi.csv,  test specific information to differentiate the test")
+    parser.add_argument(
+        "--dut_hw_version",
+        default="",
+        help="dut hw version for kpi.csv, hardware version of the device under test")
+    parser.add_argument(
+        "--dut_sw_version",
+        default="",
+        help="dut sw version for kpi.csv, software version of the device under test")
+    parser.add_argument(
+        "--dut_model_num",
+        default="",
+        help="dut model for kpi.csv,  model number / name of the device under test")
+    parser.add_argument(
+        "--dut_serial_num",
+        default="",
+        help="dut serial for kpi.csv, serial number / serial number of the device under test")
+    parser.add_argument(
+        "--test_priority",
+        default="",
+        help="dut model for kpi.csv,  test-priority is arbitrary number")
+    parser.add_argument(
+        '--csv_outfile',
+        help="--csv_outfile <Output file for csv data>",
+        default="")
+    parser.add_argument(
+        "--test_id",
+        default="test_fileio",
+        help="test-id for kpi.csv,  script or test name")
     tg_group = parser.add_mutually_exclusive_group()
     tg_group.add_argument('--add_to_group', help='name of test group to add cxs to', default=None)
     tg_group.add_argument('--del_from_group', help='name of test group to delete cxs from', default=None)
-    parser.add_argument('--cxs', help='list of cxs to add/remove depending on use of --add_to_group or --del_from_group'
-                        , default=None)
+    parser.add_argument('--cxs',
+                        help='list of cxs to add/remove depending on use of --add_to_group or --del_from_group',
+                        default=None)
     args = parser.parse_args()
 
+    parent = LFUtils.name_to_eid(args.macvlan_parent)
+    shelf = parent[0]
+    resource = parent[1]
+    macvlan_parent = parent[2]
     update_group_args = {
         "name": None,
         "action": None,
         "cxs": None
-        }
-    if args.add_to_group is not None and args.cxs is not None:
+    }
+    if args.add_to_group and args.cxs:
         update_group_args['name'] = args.add_to_group
         update_group_args['action'] = "add"
         update_group_args['cxs'] = args.cxs
-    elif args.del_from_group is not None and args.cxs is not None:
+    elif args.del_from_group and args.cxs:
         update_group_args['name'] = args.del_from_group
         update_group_args['action'] = "del"
         update_group_args['cxs'] = args.cxs
 
     port_list = []
     ip_list = []
-    if args.first_port is not None and args.use_ports is not None:
+    if args.first_port and args.use_ports:
         if args.first_port.startswith("sta"):
-            if (args.num_ports is not None) and (int(args.num_ports) > 0):
+            if args.num_ports and (int(args.num_ports) > 0):
                 start_num = int(args.first_port[3:])
                 num_ports = int(args.num_ports)
-                port_list = LFUtils.port_name_series(prefix="sta", start_id=start_num, end_id=start_num+num_ports-1,
-                                                   padding_number=10000,
-                                                   radio=args.radio)
+                port_list = LFUtils.port_name_series(prefix="sta", start_id=start_num, end_id=start_num + num_ports - 1,
+                                                     padding_number=10000,
+                                                     radio=args.radio)
         else:
-            if (args.num_ports is not None) and args.macvlan_parent is not None and (int(args.num_ports) > 0) \
-                                            and args.macvlan_parent in args.first_port:
-                start_num = int(args.first_port[args.first_port.index('#')+1:])
+            if args.num_ports and macvlan_parent and (int(args.num_ports) > 0) \
+                    and macvlan_parent in args.first_port:
+                start_num = int(args.first_port[args.first_port.index('#') + 1:])
                 num_ports = int(args.num_ports)
-                port_list = LFUtils.port_name_series(prefix=args.macvlan_parent+"#", start_id=start_num,
-                                                   end_id=start_num+num_ports-1, padding_number=100000,
-                                                   radio=args.radio)
+                port_list = LFUtils.port_name_series(prefix=macvlan_parent + "#", start_id=start_num,
+                                                     end_id=start_num + num_ports - 1, padding_number=100000,
+                                                     radio=args.radio)
             else:
                 raise ValueError("Invalid values for num_ports [%s], macvlan_parent [%s], and/or first_port [%s].\n"
                                  "first_port must contain parent port and num_ports must be greater than 0"
-                                 % (args.num_ports, args.macvlan_parent, args.first_port))
+                                 % (args.num_ports, macvlan_parent, args.first_port))
     else:
         if args.use_ports is None:
             num_ports = int(args.num_ports)
             if not args.use_macvlans:
                 port_list = LFUtils.port_name_series(prefix="sta", start_id=0, end_id=num_ports - 1,
-                                                   padding_number=10000,
-                                                   radio=args.radio)
+                                                     padding_number=10000,
+                                                     radio=args.radio)
             else:
-                port_list = LFUtils.port_name_series(prefix=args.macvlan_parent + "#", start_id=0,
-                                               end_id=num_ports - 1, padding_number=100000,
-                                               radio=args.radio)
+                port_list = LFUtils.port_name_series(prefix=macvlan_parent + "#", start_id=0,
+                                                     end_id=num_ports - 1, padding_number=100000,
+                                                     radio=args.radio)
         else:
             temp_list = args.use_ports.split(',')
             for port in temp_list:
@@ -718,20 +731,21 @@ Generic command layout:
             if len(port_list) != len(ip_list):
                 raise ValueError(temp_list, " ports must have matching ip addresses!")
 
-    if args.first_mvlan_ip is not None:
+    if args.first_mvlan_ip:
         if args.first_mvlan_ip.lower() == "dhcp":
             dhcp = True
         else:
             dhcp = False
     else:
         dhcp = True
-    if 'nfs' in args.fs_type:
-        if len(os.popen('mount -l | grep nfs').read()) > 0:
-            print('Success')
-        else:
-            raise ValueError("No nfs share is mounted")
-    else:
-        exit(1)
+
+    # if 'nfs' in args.fs_type:
+    #     if len(os.popen('mount -l | grep nfs').read()) > 0:
+    #         print('Success')
+    #     else:
+    #         raise ValueError("No nfs share is mounted")
+    # else:
+    #     exit(1)
 
     ip_test = FileIOTest(args.mgr,
                          args.mgr_port,
@@ -743,11 +757,13 @@ Generic command layout:
                          test_duration=args.test_duration,
                          upstream_port=args.upstream_port,
                          _debug_on=args.debug,
-                         macvlan_parent=args.macvlan_parent,
+                         macvlan_parent=macvlan_parent,
                          use_macvlans=args.use_macvlans,
                          first_mvlan_ip=args.first_mvlan_ip,
                          netmask=args.netmask,
                          gateway=args.gateway,
+                         shelf=shelf,
+                         resource=resource,
                          dhcp=dhcp,
                          fs_type=args.fs_type,
                          min_rw_size=args.min_rw_size,
@@ -764,7 +780,7 @@ Generic command layout:
                          use_test_groups=args.use_test_groups,
                          write_only_test_group=args.write_only_test_group,
                          read_only_test_group=args.read_only_test_group,
-                         update_group_args = update_group_args,
+                         update_group_args=update_group_args,
                          connections_per_port=args.connections_per_port,
                          mode=args.mode
                          # want a mount options param
@@ -775,6 +791,67 @@ Generic command layout:
     if not ip_test.passes():
         print(ip_test.get_fail_message())
     ip_test.start(False, False)
+
+    ip_test.report = lf_report.lf_report(_results_dir_name="test_fileio", _output_html="fileio_test.html",
+                                         _output_pdf="fileio_test.pdf")
+
+    kpi_path = ip_test.report.get_report_path()
+    ip_test.kpi_csv = lf_kpi_csv.lf_kpi_csv(
+        _kpi_path=kpi_path,
+        _kpi_test_rig=args.test_rig,
+        _kpi_test_tag=args.test_tag,
+        _kpi_dut_hw_version=args.dut_hw_version,
+        _kpi_dut_sw_version=args.dut_sw_version,
+        _kpi_dut_model_num=args.dut_model_num,
+        _kpi_dut_serial_num=args.dut_serial_num,
+        _kpi_test_id=args.test_id)
+    passes = 0
+    expected_passes = 0
+    print("Starting Test...")
+    write_bps = 0
+    read_bps = 0
+    cur_time = datetime.datetime.now()
+    # print("Got Values")
+    end_time = ip_test.parse_time(ip_test.test_duration) + cur_time
+    while cur_time < end_time:
+        write_bps = 0
+        read_bps = 0
+        interval_time = cur_time + datetime.timedelta(seconds=1)
+        while cur_time < interval_time:
+            cur_time = datetime.datetime.now()
+            time.sleep(1)
+        new_rx_values = ip_test.get_values()
+        for key, value in new_rx_values.items():
+            write_bps += value['write-bps']
+            read_bps += value['read-bps']
+
+        expected_passes += 1
+        if ip_test.compare_vals(new_rx_values):
+            passes += 1
+        else:
+            ip_test._fail("FAIL: Not all stations increased traffic")#, print_fail)
+            # break
+        # old_rx_values = new_rx_values
+        cur_time = datetime.datetime.now()
+
+    ip_test.kpi_csv.kpi_csv_get_dict_update_time()
+    ip_test.kpi_csv.kpi_dict['Graph-Group'] = 'Total write bps'
+    ip_test.kpi_csv.kpi_dict['short-description'] = "write-bps %s" % ip_test.wo_profile.fs_type
+    ip_test.kpi_csv.kpi_dict['numeric-score'] = write_bps
+    ip_test.kpi_csv.kpi_dict['Units'] = "bps"
+    ip_test.kpi_csv.kpi_csv_write_dict(ip_test.kpi_csv.kpi_dict)
+
+    ip_test.kpi_csv.kpi_csv_get_dict_update_time()
+    ip_test.kpi_csv.kpi_dict['Graph-Group'] = 'Total read bps'
+    ip_test.kpi_csv.kpi_dict['short-description'] = "read-bps %s" % ip_test.wo_profile.fs_type
+    ip_test.kpi_csv.kpi_dict['numeric-score'] = read_bps
+    ip_test.kpi_csv.kpi_dict['Units'] = "bps"
+    ip_test.kpi_csv.kpi_csv_write_dict(ip_test.kpi_csv.kpi_dict)
+
+    if passes == expected_passes:
+        ip_test._pass("PASS: All tests passes")#, print_pass)
+
+
     ip_test.stop()
     if not ip_test.passes():
         print(ip_test.get_fail_message())

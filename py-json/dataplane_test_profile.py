@@ -3,8 +3,15 @@
 Library to Run Dataplane Test: Using lf_cv_base class
 
 """
+import sys
+import os
+import importlib
 
-from lf_cv_base import ChamberViewBase
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lf_cv_base = importlib.import_module("py-json.lf_cv_base")
+ChamberViewBase = lf_cv_base.ChamberViewBase
 
 
 class DataPlaneTest(ChamberViewBase):
@@ -32,7 +39,7 @@ class DataPlaneTest(ChamberViewBase):
 
 
 def main():
-    obj = DataPlaneTest(lfclient_host="localhost", lfclient_port=8080, debug_=True)
+    DataPlaneTest(lfclient_host="localhost", lfclient_port=8080, debug_=True)
 
 
 if __name__ == '__main__':

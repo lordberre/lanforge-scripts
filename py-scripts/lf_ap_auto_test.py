@@ -23,7 +23,7 @@ the options and how best to input data.
       --set 'Skip 2.4Ghz Tests' 1 --set 'Skip 5Ghz Tests' 1 \
       --set 'Throughput vs Pkt Size' 0 --set 'Capacity' 0 --set 'Stability' 0 --set 'Band-Steering' 0 \
       --set 'Multi-Station Throughput vs Pkt Size' 0 --set 'Long-Term' 0 \
-      --test_rig Testbed-01 --pull_report \
+      --pull_report \
       --influx_host c7-graphana --influx_port 8086 --influx_org Candela \
       --influx_token=-u_Wd-L8o992701QF0c5UmqEp7w7Z7YOMaWLxOMgmHfATJGnQbbmYyNxHBR9PgD6taM_tcxqJl6U8DjU1xINFQ== \
       --influx_bucket ben \
@@ -46,7 +46,6 @@ show_log: 0
 port_sorting: 0
 kpi_id: AP Auto
 bg: 0xE0ECF8
-test_rig: Ferndale-01-Basic
 show_scan: 1
 auto_helper: 1
 skip_2: 1
@@ -163,23 +162,27 @@ reset_duration_max: 60000
 bandsteer_always_5g: 0
 
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
-import json
-from os import path
+import logging
+
+logger = logging.getLogger(__name__)
 
 if sys.version_info[0] != 3:
-    print("This script requires Python 3")
+    logger.critical("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_test_manager import cv_test as cvtest
-from cv_test_manager import *
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cvtest = cv_test_manager.cv_test
+cv_add_base_parser = cv_test_manager.cv_add_base_parser
+cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+lf_logger_config = importlib.import_module("py-scripts.lf_logger_config")
 
 class ApAutoTest(cvtest):
     def __init__(self,
@@ -187,9 +190,12 @@ class ApAutoTest(cvtest):
                  lf_port=8080,
                  lf_user="lanforge",
                  lf_password="lanforge",
+                 ssh_port=22,
+                 local_lf_report_dir=None,
+                 lf_report_dir=None,
                  instance_name="ap_auto_instance",
                  config_name="ap_auto_config",
-                 upstream="1.1.eth1",
+                 upstream=None,
                  pull_report=False,
                  dut5_0="NA",
                  dut2_0="NA",
@@ -197,21 +203,35 @@ class ApAutoTest(cvtest):
                  max_stations_2=100,
                  max_stations_5=100,
                  max_stations_dual=200,
-                 radio2=[],
-                 radio5=[],
-                 enables=[],
-                 disables=[],
-                 raw_lines=[],
+                 radio2=None,
+                 radio5=None,
+                 enables=None,
+                 disables=None,
+                 raw_lines=None,
                  raw_lines_file="",
-                 sets=[],
-                 graph_groups=None
+                 sets=None,
+                 graph_groups=None,
+                 debug=False,
+                 test_tag=""
                  ):
-        super().__init__(lfclient_host=lf_host, lfclient_port=lf_port)
+        super().__init__(lfclient_host=lf_host, lfclient_port=lf_port, debug_=debug)
 
+        if radio2 is None:
+            radio2 = []
+        if radio5 is None:
+            radio5 = []
+        if enables is None:
+            enables = []
+        if disables is None:
+            disables = []
+        if raw_lines is None:
+            raw_lines = []
+        if sets is None:
+            sets = []
         self.lf_host = lf_host
         self.lf_port = lf_port
         self.lf_user = lf_user
-        self.lf_password =lf_password
+        self.lf_password = lf_password
         self.instance_name = instance_name
         self.config_name = config_name
         self.upstream = upstream
@@ -230,19 +250,22 @@ class ApAutoTest(cvtest):
         self.raw_lines = raw_lines
         self.raw_lines_file = raw_lines_file
         self.sets = sets
+        self.ssh_port = ssh_port
         self.graph_groups = graph_groups
+        self.lf_report_dir = lf_report_dir
+        self.local_lf_report_dir = local_lf_report_dir
+        self.test_tag = test_tag
 
     def setup(self):
         # Nothing to do at this time.
         return
-
 
     def run(self):
         self.sync_cv()
         time.sleep(2)
         self.sync_cv()
 
-        blob_test = "%s-"%(self.test_name)
+        blob_test = "%s-" % self.test_name
 
         self.rm_text_blob(self.config_name, blob_test)  # To delete old config with same name
         self.show_text_blob(None, None, False)
@@ -252,19 +275,19 @@ class ApAutoTest(cvtest):
 
         ridx = 0
         for r in self.radio2:
-            cfg_options.append("radio2-%i: %s"%(ridx, r[0]))
+            cfg_options.append("radio2-%i: %s" % (ridx, r[0]))
             ridx += 1
 
         ridx = 0
         for r in self.radio5:
-            cfg_options.append("radio5-%i: %s"%(ridx, r[0]))
+            cfg_options.append("radio5-%i: %s" % (ridx, r[0]))
             ridx += 1
 
         self.apply_cfg_options(cfg_options, self.enables, self.disables, self.raw_lines, self.raw_lines_file)
 
         # Command line args take precedence.
-        if self.upstream != "":
-            cfg_options.append("upstream_port: " + self.upstream)
+        if self.upstream:
+            cfg_options.append("upstream_port: %s" % self.upstream)
         if self.dut5_0 != "":
             cfg_options.append("dut5-0: " + self.dut5_0)
         if self.dut2_0 != "":
@@ -275,6 +298,8 @@ class ApAutoTest(cvtest):
             cfg_options.append("max_stations_5: " + str(self.max_stations_5))
         if self.max_stations_dual != -1:
             cfg_options.append("max_stations_dual: " + str(self.max_stations_dual))
+        if self.test_tag != "":
+            cfg_options.append("test_tag: " + self.test_tag)
 
         # We deleted the scenario earlier, now re-build new one line at a time.
         self.build_cfg(self.config_name, blob_test, cfg_options)
@@ -283,39 +308,42 @@ class ApAutoTest(cvtest):
         self.create_and_run_test(self.load_old_cfg, self.test_name, self.instance_name,
                                  self.config_name, self.sets,
                                  self.pull_report, self.lf_host, self.lf_user, self.lf_password,
-                                 cv_cmds, graph_groups_file=self.graph_groups)
+                                 cv_cmds, ssh_port=self.ssh_port, local_lf_report_dir=self.local_lf_report_dir,
+                                 graph_groups_file=self.graph_groups)
 
         self.rm_text_blob(self.config_name, blob_test)  # To delete old config with same name
 
 
 def main():
-
-    parser = argparse.ArgumentParser("""
+    parser = argparse.ArgumentParser(
+        prog="lf_ap_auto_test.py",
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="""
     Open this file in an editor and read the top notes for more details.
     
     Example:
-    ./lf_ap_auto_test.py --mgr localhost --port 8080 --lf_user lanforge --lf_password lanforge \
-      --instance_name ap-auto-instance --config_name test_con --upstream 1.1.eth2 \
-      --dut5_0 'linksys-8450 Default-SSID-5gl c4:41:1e:f5:3f:25 (2)' \
-      --dut2_0 'linksys-8450 Default-SSID-2g c4:41:1e:f5:3f:24 (1)' \
-      --max_stations_2 100 --max_stations_5 100 --max_stations_dual 200 \
-      --radio2 1.1.wiphy0 --radio2 1.1.wiphy2 \
-      --radio5 1.1.wiphy1 --radio5 1.1.wiphy3 --radio5 1.1.wiphy4 \
-      --radio5 1.1.wiphy5 --radio5 1.1.wiphy6 --radio5 1.1.wiphy7 \
-      --set 'Basic Client Connectivity' 1 --set 'Multi Band Performance' 1 \
-      --set 'Skip 2.4Ghz Tests' 1 --set 'Skip 5Ghz Tests' 1 \
-      --set 'Throughput vs Pkt Size' 0 --set 'Capacity' 0 --set 'Stability' 0 --set 'Band-Steering' 0 \
-      --set 'Multi-Station Throughput vs Pkt Size' 0 --set 'Long-Term' 0 \
-      --test_rig Testbed-01 --pull_report \
-      --influx_host c7-graphana --influx_port 8086 --influx_org Candela \
-      --influx_token=-u_Wd-L8o992701QF0c5UmqEp7w7Z7YOMaWLxOMgmHfATJGnQbbmYyNxHBR9PgD6taM_tcxqJl6U8DjU1xINFQ== \
-      --influx_bucket ben \
+    ./lf_ap_auto_test.py --mgr localhost --port 8080 --lf_user lanforge --lf_password lanforge \\
+      --instance_name ap-auto-instance --config_name test_con --upstream 1.1.eth2 \\
+      --dut5_0 'linksys-8450 Default-SSID-5gl c4:41:1e:f5:3f:25 (2)' \\
+      --dut2_0 'linksys-8450 Default-SSID-2g c4:41:1e:f5:3f:24 (1)' \\
+      --max_stations_2 100 --max_stations_5 100 --max_stations_dual 200 \\
+      --radio2 1.1.wiphy0 --radio2 1.1.wiphy2 \\
+      --radio5 1.1.wiphy1 --radio5 1.1.wiphy3 --radio5 1.1.wiphy4 \\
+      --radio5 1.1.wiphy5 --radio5 1.1.wiphy6 --radio5 1.1.wiphy7 \\
+      --set 'Basic Client Connectivity' 1 --set 'Multi Band Performance' 1 \\
+      --set 'Skip 2.4Ghz Tests' 1 --set 'Skip 5Ghz Tests' 1 \\
+      --set 'Throughput vs Pkt Size' 0 --set 'Capacity' 0 --set 'Stability' 0 --set 'Band-Steering' 0 \\
+      --set 'Multi-Station Throughput vs Pkt Size' 0 --set 'Long-Term' 0 \\
+      --test_rig Testbed-01 --test_tag ATH10K --pull_report \\
+      --influx_host c7-graphana --influx_port 8086 --influx_org Candela \\
+      --influx_token=-u_Wd-L8o992701QF0c5UmqEp7w7Z7YOMaWLxOMgmHfATJGnQbbmYyNxHBR9PgD6taM_tcxqJl6U8DjU1xINFQ== \\
+      --influx_bucket ben \\
       --influx_tag testbed Ferndale-01
       """
-                                     )
+    )
     cv_add_base_parser(parser)  # see cv_test_manager.py
 
-    parser.add_argument("-u", "--upstream", type=str, default="",
+    parser.add_argument("-u", "--upstream", type=str, default=None,
                         help="Upstream port for wifi capacity test ex. 1.1.eth1")
 
     parser.add_argument("--max_stations_2", type=int, default=-1,
@@ -333,37 +361,65 @@ def main():
                         help="Specify 2.4Ghz radio.  May be specified multiple times.")
     parser.add_argument("--radio5", action='append', nargs=1, default=[],
                         help="Specify 5Ghz radio.  May be specified multiple times.")
+    parser.add_argument("--local_lf_report_dir",
+                        help="--local_lf_report_dir <where to pull reports to>  default '' put where dataplane script run from",
+                        default="")
+    parser.add_argument("--lf_report_dir",
+                        help="--lf_report_dir <where to pull reports from>  default '' put where dataplane script run from",
+                        default="")
+
+    # TODO:  Use lfcli_base for common arguments.
+    parser.add_argument('--debug', help='Enable debugging', default=False, action="store_true")
+    parser.add_argument('--log_level',
+                        default=None,
+                        help='Set logging level: debug | info | warning | error | critical')
+    parser.add_argument('--lf_logger_config_json',
+                        help="--lf_logger_config_json <json file> , json configuration of logger")
 
     args = parser.parse_args()
 
+    logger_config = lf_logger_config.lf_logger_config()
+    # set the logger level to requested value
+    logger_config.set_level(level=args.log_level)
+    logger_config.set_json(json_file=args.lf_logger_config_json)
+
+
     cv_base_adjust_parser(args)
 
-    CV_Test = ApAutoTest(lf_host = args.mgr,
-                         lf_port = args.port,
-                         lf_user = args.lf_user,
-                         lf_password = args.lf_password,
-                         instance_name = args.instance_name,
-                         config_name = args.config_name,
-                         upstream = args.upstream,
-                         pull_report = args.pull_report,
-                         dut5_0 = args.dut5_0,
-                         dut2_0 = args.dut2_0,
-                         load_old_cfg = args.load_old_cfg,
-                         max_stations_2 = args.max_stations_2,
-                         max_stations_5 = args.max_stations_5,
-                         max_stations_dual = args.max_stations_dual,
-                         radio2 = args.radio2,
-                         radio5 = args.radio5,
-                         enables = args.enable,
-                         disables = args.disable,
-                         raw_lines = args.raw_line,
-                         raw_lines_file = args.raw_lines_file,
-                         sets = args.set
+    CV_Test = ApAutoTest(lf_host=args.mgr,
+                         lf_port=args.port,
+                         lf_user=args.lf_user,
+                         lf_password=args.lf_password,
+                         instance_name=args.instance_name,
+                         config_name=args.config_name,
+                         upstream=args.upstream,
+                         pull_report=args.pull_report,
+                         local_lf_report_dir=args.local_lf_report_dir,
+                         lf_report_dir=args.lf_report_dir,
+                         dut5_0=args.dut5_0,
+                         dut2_0=args.dut2_0,
+                         load_old_cfg=args.load_old_cfg,
+                         max_stations_2=args.max_stations_2,
+                         max_stations_5=args.max_stations_5,
+                         max_stations_dual=args.max_stations_dual,
+                         radio2=args.radio2,
+                         radio5=args.radio5,
+                         enables=args.enable,
+                         disables=args.disable,
+                         raw_lines=args.raw_line,
+                         raw_lines_file=args.raw_lines_file,
+                         sets=args.set,
+                         debug=args.debug
                          )
     CV_Test.setup()
     CV_Test.run()
 
     CV_Test.check_influx_kpi(args)
+
+    if CV_Test.passes():
+        CV_Test.exit_success()
+    else:
+        CV_Test.exit_fail()
 
 if __name__ == "__main__":
     main()

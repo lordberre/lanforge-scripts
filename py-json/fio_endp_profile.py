@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-import pprint
-from pprint import pprint
-import time
-
-# Class: FIOEndpProfile(LFCliBase) 
-# 
+# Class: FIOEndpProfile(LFCliBase)
 
 # Written by Candela Technologies Inc.
 #  Updated by:
-#
+import sys
+import os
+import importlib
+import time
+import logging
+
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+
+logger = logging.getLogger(__name__)
+
 
 class FIOEndpProfile(LFCliBase):
     """
@@ -55,24 +62,26 @@ class FIOEndpProfile(LFCliBase):
         self.created_endp = []
 
     def start_cx(self):
-        print("Starting CXs...")
+        logger.info("Starting CXs...")
         for cx_name in self.created_cx.keys():
             self.json_post("/cli-json/set_cx_state", {
                 "test_mgr": "default_tm",
                 "cx_name": self.created_cx[cx_name],
                 "cx_state": "RUNNING"
             }, debug_=self.debug)
+            # this is for a visual affect someone watching the screen, leave as print
             print(".", end='')
         print("")
 
     def stop_cx(self):
-        print("Stopping CXs...")
+        logger.info("Stopping CXs...")
         for cx_name in self.created_cx.keys():
             self.json_post("/cli-json/set_cx_state", {
                 "test_mgr": "default_tm",
                 "cx_name": self.created_cx[cx_name],
                 "cx_state": "STOPPED"
             }, debug_=self.debug)
+            # this is for a visual affect someone watching the screen, leave as print
             print(".", end='')
         print("")
 
@@ -100,7 +109,7 @@ class FIOEndpProfile(LFCliBase):
         return ro_profile
 
     def cleanup(self):
-        print("Cleaning up cxs and endpoints")
+        logger.info("Cleaning up cxs and endpoints")
         if len(self.created_cx) != 0:
             for cx_name in self.created_cx.keys():
                 req_url = "cli-json/rm_cx"
@@ -117,7 +126,9 @@ class FIOEndpProfile(LFCliBase):
                 self.json_post(req_url, data)
                 # pprint(data)
 
-    def create(self, ports=[], connections_per_port=1, sleep_time=.5, debug_=False, suppress_related_commands_=None):
+    def create(self, ports=None, connections_per_port=1, sleep_time=.5, debug_=False, suppress_related_commands_=None):
+        if ports is None:
+            ports = []
         cx_post_data = []
         for port_name in ports:
             for num_connection in range(connections_per_port):
@@ -127,8 +138,11 @@ class FIOEndpProfile(LFCliBase):
                     resource = self.local_realm.name_to_eid(port_name)[1]
                     name = self.local_realm.name_to_eid(port_name)[2]
                 else:
+                    logger.critical("Unexpected name for port_name %s" % port_name)
                     raise ValueError("Unexpected name for port_name %s" % port_name)
                 if self.directory is None or self.server_mount is None or self.fs_type is None:
+                    logger.critical("directory [%s], server_mount [%s], and type [%s] must not be None" % (
+                        self.directory, self.server_mount, self.fs_type))
                     raise ValueError("directory [%s], server_mount [%s], and type [%s] must not be None" % (
                         self.directory, self.server_mount, self.fs_type))
                 endp_data = {
@@ -169,8 +183,6 @@ class FIOEndpProfile(LFCliBase):
         self.local_realm.json_post("/cli-json/nc_show_endpoints", {"endpoint": "all"})
         for port_name in ports:
             for num_connection in range(connections_per_port):
-                shelf = self.local_realm.name_to_eid(port_name)[0]
-                resource = self.local_realm.name_to_eid(port_name)[1]
                 name = self.local_realm.name_to_eid(port_name)[2]
 
                 endp_data = {

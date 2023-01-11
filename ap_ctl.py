@@ -47,6 +47,14 @@ import argparse
 import pexpect
 import serial
 from pexpect_serial import SerialSpawn
+import importlib
+import os
+
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../")))
+logger = logging.getLogger(__name__)
+lf_logger_config = importlib.import_module("py-scripts.lf_logger_config")
+mux_client = importlib.import_module("mux_client")
 
 # pip install pexpect-serial  (on Ubuntu)
 # sudo pip install pexpect-serial (on Ubuntu for everyone)
@@ -55,7 +63,8 @@ default_host = "localhost"
 default_ports = {
     "serial": None,
     "ssh":   22,
-    "telnet": 23
+    "telnet": 23,
+    "mux_client": 23200 
 }
 NL = "\n"
 CR = "\r\n"
@@ -104,8 +113,8 @@ def main():
     global logfile
 
     AP_ESCAPE       = "Escape character is '^]'."
-    AP_USERNAME     = "Username:"
-    AP_PASSWORD     = "Password:"
+    AP_USERNAME     = "Username: "
+    AP_PASSWORD     = "Password: "
     AP_EN           = "en"
     AP_MORE         = "--More--"
     AP_EXIT         = "exit"
@@ -114,16 +123,21 @@ def main():
 
     
     parser = argparse.ArgumentParser(description="Cisco AP Control Script")
-    parser.add_argument("-a", "--prompt",  type=str, help="ap prompt")
-    parser.add_argument("-d", "--dest",    type=str, help="address of the AP  172.19.27.55")
-    parser.add_argument("-o", "--port",    type=int, help="control port on the AP, 2008")
-    parser.add_argument("-u", "--user",    type=str, help="credential login/username, admin")
-    parser.add_argument("-p", "--passwd",  type=str, help="credential password Wnbulab@123")
-    parser.add_argument("-s", "--scheme",  type=str, choices=["serial", "ssh", "telnet"], help="Connect via serial, ssh or telnet")
-    parser.add_argument("-t", "--tty",     type=str, help="tty serial device for connecting to AP")
-    parser.add_argument("-l", "--log",     type=str, help="logfile for messages, stdout means output to console",default="stdout")
-    parser.add_argument("-z", "--action",  type=str, help="action,  current action is powercfg")
-    parser.add_argument("-b", "--baud",    type=str, help="action,  baud rate lanforge: 115200  cisco: 9600")
+    parser.add_argument("--scheme",  type=str, choices=["serial", "ssh", "telnet", "mux_client"], help="Connect via serial, ssh, telnet, mux_client")
+    parser.add_argument("--dest",    type=str, help="address of the AP  172.19.27.55 or address of the mux_serial server 192.168.100.239")
+    parser.add_argument("--radio_slot",    type=str, help="slot of the radio for powerreg and powercfg commands",default='2')
+    parser.add_argument("--prompt",  type=str, help="ap prompt")
+    parser.add_argument("--port",    type=int, help="control port on the AP, 2008, mux_client 23200")
+    parser.add_argument("--user",    type=str, help="credential login/username, admin")
+    parser.add_argument("--passwd",  type=str, help="credential password Cisco123",default="Admin123")
+    parser.add_argument("--tty",     type=str, help="tty serial device for connecting to AP")
+    parser.add_argument("--log",     type=str, help="logfile for messages, stdout means output to console",default="stdout")
+    parser.add_argument("--action",  type=str, help="action,  cmd, powercfg, powerreg, clear_log, show_log, cac_expiry_evt, ds_data_5ghz, ds_data_24ghz  ")
+    parser.add_argument("--value",   type=str, help="value,  cmd value")
+    parser.add_argument("--baud",    type=str, help="baud,  baud rate lanforge: 115200  cisco: 9600")
+    # TODO possibly include the mux_client as a module to run 
+    parser.add_argument("--mux_client_module", type=str, help="mux client module")
+
 
     args = None
     try:
@@ -168,7 +182,7 @@ def main():
 
         elif (scheme == "ssh"):
             if (port is None):
-                port = 22
+                port = default_ports["ssh"]
             cmd = "ssh -p%d %s@%s"%(port, user, host)
             logg.info("Spawn: "+cmd+NL)
             egg = pexpect.spawn(cmd)
@@ -176,30 +190,53 @@ def main():
             egg.logfile = FileAdapter(logg)
         elif (scheme == "telnet"):
             if (port is None):
-                port = 23
+                port = default_ports["telnet"]
             cmd = "telnet {} {}".format(host, port)
             logg.info("Spawn: "+cmd+NL)
             egg = pexpect.spawn(cmd)
             egg.logfile = FileAdapter(logg)
             # Will login below as needed.
+        elif (scheme == "mux_client"):
+            # sudo ./mux_server.py --device /dev/ttyUSB0 --baud 115200 --port 23200
+            if port is None:
+                port = default_ports["mux_client"]
+            # for client                
+            cmd = "./mux_client.py --host {host} --port {port}".format(host=args.dest,port=args.port)
+            logg.info("Spawn: "+cmd+NL)
+            egg = pexpect.spawn(cmd)
+            egg.logfile = FileAdapter(logg)
+
         else:
             usage()
             exit(1)
     except Exception as e:
         logging.exception(e)
-    
-    AP_PROMPT       = "{}>".format(args.prompt)
-    AP_HASH         = "{}#".format(args.prompt)
+    if args.scheme == 'mux_client' or args.prompt is None:
+        AP_PROMPT       = ">"
+        AP_HASH         = "#"
+        MUX_PROMPT      = "MUX >"
+    else:
+        AP_PROMPT       = "{}>".format(args.prompt)
+        AP_HASH         = "{}#".format(args.prompt)
+        MUX_PROMPT      = "MUX >"
+
+
     time.sleep(0.1)
     logged_in  = False
     loop_count = 0
     while (loop_count <= 8 and logged_in == False):
         loop_count += 1
-        i = egg.expect_exact([AP_ESCAPE,AP_PROMPT,AP_HASH,AP_USERNAME,AP_PASSWORD,AP_MORE,LF_PROMPT,pexpect.TIMEOUT],timeout=5)
+        try:
+            i = egg.expect_exact([AP_ESCAPE,AP_PROMPT,AP_HASH,AP_USERNAME,AP_PASSWORD,AP_MORE,LF_PROMPT,MUX_PROMPT,pexpect.TIMEOUT],timeout=5)
+        except BaseException:
+            logg.info("pexcept exception the connection may not be present, exiting")
+            exit(1)
+        # AP_ESCAPE
         if i == 0:
             logg.info("Expect: {} i: {} before: {} after: {}".format(AP_ESCAPE,i,egg.before,egg.after))
             egg.sendline(CR) # Needed after Escape or should just do timeout and then a CR?
             sleep(1)
+        # AP_PROMPT
         if i == 1:
             logg.info("Expect: {} i: {} before: {} after: {}".format(AP_PROMPT,i,egg.before,egg.after))
             egg.sendline(AP_EN) 
@@ -217,19 +254,22 @@ def main():
                     logg.info("Expect: {} i: {} j: {} k: {} before: {} after: {}".format("Timeout",i,j,k,egg.before,egg.after))
             if j == 1:
                 logg.info("Expect: {} i: {} j: {} before: {} after: {}".format("Timeout",i,j,egg.before,egg.after))
-
+        # AP_HASH
         if i == 2:
             logg.info("Expect: {} i: {} before: {} after: {}".format(AP_HASH,i,egg.before,egg.after))
             logged_in = True 
             sleep(1)
+        # AP_USERNAME
         if i == 3:
             logg.info("Expect: {} i: {} before: {} after: {}".format(AP_USERNAME,i,egg.before,egg.after))
             egg.sendline(args.user) 
-            sleep(1)
+            sleep(2)
+        # AP_PASSWORD
         if i == 4:
             logg.info("Expect: {} i: {} before: {} after: {}".format(AP_PASSWORD,i,egg.before,egg.after))
             egg.sendline(args.passwd) 
-            sleep(1)
+            sleep(2)
+        # AP_MORE
         if i == 5:
             logg.info("Expect: {} i: {} before: {} after: {}".format(AP_MORE,i,egg.before,egg.after))
             if (scheme == "serial"):
@@ -238,6 +278,7 @@ def main():
                 egg.sendcontrol('c')
             sleep(1)
         # for Testing serial connection using Lanforge
+        # LF_PROMPT
         if i == 6:
             logg.info("Expect: {} i: {} before: {} after: {}".format(LF_PROMPT,i,egg.before.decode('utf-8', 'ignore'),egg.after.decode('utf-8', 'ignore')))
             if (loop_count < 3):
@@ -245,16 +286,23 @@ def main():
                 sleep(1)
             if (loop_count > 4):
                 logged_in = True # basically a test mode using lanforge serial
+        # MUX_PROMPT
         if i == 7:
+            logg.info("Received MUX prompt, send carriage return")
+            logg.info("Expect: {} i: {} before: {} after: {}".format("Timeout",i,egg.before,egg.after))
+            egg.sendline(CR) 
+            sleep(1)
+        # TIMEOUT
+        if i == 8:
             logg.info("Expect: {} i: {} before: {} after: {}".format("Timeout",i,egg.before,egg.after))
             egg.sendline(CR) 
             sleep(1)
 
-
-    if (args.action == "powercfg"):
-        logg.info("execute: show controllers dot11Radio 1 powercfg | g T1")
-        egg.sendline('show controllers dot11Radio 1 powercfg | g T1')
-        egg.expect([pexpect.TIMEOUT], timeout=3)  # do not delete this for it allows for subprocess to see output
+    if (args.action == "cmd"):
+        command = args.value
+        logg.info("execute: {command}".format(command=command))
+        egg.sendline(command)
+        egg.expect([pexpect.TIMEOUT], timeout=7)  # do not delete this for it allows for subprocess to see output
         print(egg.before.decode('utf-8', 'ignore')) # do not delete this for it  allows for subprocess to see output
         i = egg.expect_exact([AP_MORE,pexpect.TIMEOUT],timeout=5)
         if i == 0:
@@ -262,6 +310,38 @@ def main():
         if i == 1:
             logg.info("send cntl c anyway")
             egg.sendcontrol('c')
+
+    # include or i will include all lines that match the criteria
+    # section or s will include entire sections that match
+    # show controllers dot11Radio 2 powercfg | i T1
+    elif (args.action == "powercfg"):
+        command = 'show controllers dot11Radio {slot} powercfg | i T1'.format(slot=args.radio_slot)
+        logg.info("execute: {command}".format(command=command))
+        egg.sendline(command)
+        egg.expect([pexpect.TIMEOUT], timeout=7)  # do not delete this for it allows for subprocess to see output
+        print(egg.before.decode('utf-8', 'ignore')) # do not delete this for it  allows for subprocess to see output
+        i = egg.expect_exact([AP_MORE,pexpect.TIMEOUT],timeout=5)
+        if i == 0:
+            egg.sendcontrol('c')
+        if i == 1:
+            logg.info("send cntl c anyway")
+            egg.sendcontrol('c')
+
+    elif (args.action == "powerreg"):
+        command = "show controllers dot11Radio {slot} powerreg".format(slot=args.radio_slot)
+        logg.info("execute: {command}".format(command=command))
+        egg.sendline(command)
+        sleep(0.4)
+        egg.expect([pexpect.TIMEOUT], timeout=2)  # do not delete this for it allows for subprocess to see output
+        print(egg.before.decode('utf-8', 'ignore')) # do not delete this for it  allows for subprocess to see output
+        i = egg.expect_exact([AP_MORE,pexpect.TIMEOUT],timeout=4)
+        if i == 0:
+            egg.sendline('r')
+            egg.expect([pexpect.TIMEOUT], timeout=4)  # do not delete this for it allows for subprocess to see output
+            print(egg.before.decode('utf-8', 'ignore')) # do not delete this for it  allows for subprocess to see output
+        if i == 1:
+            print(egg.before.decode('utf-8', 'ignore')) # do not delete this for it  allows for subprocess to see output
+
 
     elif (args.action == "clear_log"):
         logg.info("execute: clear log")

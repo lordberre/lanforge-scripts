@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 """
 Note: To Run this script gui should be opened with
 
@@ -100,11 +99,10 @@ mconn: 1
 mpkt: 1000
 tos: 0
 loop_iterations: 1
-
 """
-
 import sys
 import os
+import importlib
 import argparse
 import time
 import json
@@ -114,11 +112,13 @@ if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+ 
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from cv_test_manager import cv_test
-from cv_test_manager import *
+cv_test_manager = importlib.import_module("py-json.cv_test_manager")
+cv_test = cv_test_manager.cv_test
+cv_add_base_parser = cv_test_manager.cv_add_base_parser
+cv_base_adjust_parser = cv_test_manager.cv_base_adjust_parser
 
 
 class RxSensitivityTest(cv_test):
@@ -216,13 +216,16 @@ class RxSensitivityTest(cv_test):
         self.create_and_run_test(self.load_old_cfg, self.test_name, self.instance_name,
                                  self.config_name, self.sets,
                                  self.pull_report, self.lf_host, self.lf_user, self.lf_password,
-                                 cv_cmds, ssh_port=self.ssh_port, local_path=self.local_path,
+                                 cv_cmds, ssh_port=self.ssh_port, local_lf_report_dir=self.local_path,
                                  graph_groups_file=self.graph_groups)
         self.rm_text_blob(self.config_name, blob_test)  # To delete old config with same name
 
 
 def main():
-    parser = argparse.ArgumentParser(description="""
+    parser = argparse.ArgumentParser(
+        prog='lf_rx_sensitivity_test.py',
+        formatter_class=argparse.RawTextHelpFormatter,
+        description="""
 
     IMPORTANT: Start lanforge with socket 3990 :  ./lfclient.bash -cli-socket 3990
         lfclient.bash is located in the LANforgeGUI_X.X.X directory
@@ -251,9 +254,9 @@ def main():
 
 
     Example 2:
-    ./lf_dataplane_test.py --json <name>.json
+    ./lf_rx_sensitivity_test.py --json <name>.json
 
-    see sample json file: lf_dataplane_config.json
+    see sample json file: lf_rx_sensitivity_config.json
 
     Sample <name>.json between using eth1 and eth2 
     {
@@ -261,7 +264,7 @@ def main():
 	    "port":"8080",
 	    "lf_user":"lanforge",
 	    "lf_password":"lanforge",
-	    "instance_name":"dataplane-instance",
+	    "instance_name":"rx-sensitivity-instance",
 	    "config_name":"test_con",
 	    "upstream":"1.1.eth1",
 	    "dut":"asus_5g",
@@ -278,7 +281,7 @@ def main():
 	    "port":"8080",
 	    "lf_user":"lanforge",
 	    "lf_password":"lanforge",
-	    "instance_name":"dataplane-instance",
+	    "instance_name":"rx-sensitivity-instance",
 	    "config_name":"test_con",
 	    "upstream":"1.1.eth1",
 	    "dut":"asus_5g",
@@ -296,7 +299,7 @@ def main():
 
     parser.add_argument('--json', help="--json <config.json> json input file", default="")
     parser.add_argument("-u", "--upstream", type=str, default="",
-                        help="Upstream port for wifi capacity test ex. 1.1.eth2")
+                        help="Upstream port for rx sensitivity test ex. 1.1.eth2")
     parser.add_argument("--station", type=str, default="",
                         help="Station to be used in this test, example: 1.1.sta01500")
 

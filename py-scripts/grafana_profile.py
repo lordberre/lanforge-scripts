@@ -7,22 +7,23 @@ It gets the columns of the files and from that it automatically determines the n
 """
 import sys
 import os
+import importlib
 import argparse
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-dashboard'))
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-from GrafanaRequest import GrafanaRequest
-from LANforge.lfcli_base import LFCliBase
-import string
+# from GrafanaRequest import GrafanaRequest
+GrafanaRequest = importlib.import_module("py-dashboard.GrafanaRequest")
+GrafanaRequest = GrafanaRequest.GrafanaRequest
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+
 
 class UseGrafana(GrafanaRequest):
-
 
     def read_csv(self, file):
         csv = open(file).read().split('\n')
@@ -38,7 +39,6 @@ class UseGrafana(GrafanaRequest):
         for row in csv[1:]:
             results.append(row[value])
         return results
-
 
     def get_units(self, target_csv):
         csv = self.read_csv(target_csv)
@@ -60,7 +60,7 @@ def main():
             --grafana_token 
             --dashbaord_name
             --scripts "Wifi Capacity"
-        
+
         Create a custom dashboard with the following command:
         ./grafana_profile.py --create_custom yes 
                             --title Dataplane 
@@ -69,7 +69,7 @@ def main():
                             --graph_groups 'Per Stations Rate DL'
                             --graph_groups 'Per Stations Rate UL'
                             --graph_groups 'Per Stations Rate UL+DL'
-        
+
         Create a snapshot of a dashboard:
         ./grafana_profile.py --grafana_token TOKEN
                              --grafana_host HOST
@@ -96,7 +96,8 @@ def main():
     optional.add_argument('--influx_bucket', help='Name of your Influx Bucket', default=None)
     optional.add_argument('--graph_groups', help='How you want to filter your graphs on your dashboard',
                           action='append', default=[None])
-    optional.add_argument('--graph_groups_file', help='File which determines how you want to filter your graphs on your dashboard',
+    optional.add_argument('--graph_groups_file',
+                          help='File which determines how you want to filter your graphs on your dashboard',
                           default=None)
     optional.add_argument('--testbed', help='Which testbed you want to query', default=None)
     optional.add_argument('--kpi', help='KPI file(s) which you want to graph form', action='append', default=None)
@@ -125,7 +126,7 @@ def main():
         Grafana.create_dashboard_from_data(args.dashboard_json)
 
     if args.kpi is not None:
-        args.graph_groups = args.graph_groups+Grafana.get_graph_groups(args.graph_groups)
+        args.graph_groups = args.graph_groups + Grafana.get_graph_groups(args.graph_groups)
 
     if args.create_custom:
         Grafana.create_custom_dashboard(scripts=args.scripts,
@@ -144,7 +145,6 @@ def main():
 
     if args.list_snapshots:
         Grafana.list_snapshots()
-
 
 
 if __name__ == "__main__":

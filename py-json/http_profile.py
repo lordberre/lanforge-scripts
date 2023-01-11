@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
-from LANforge.lfcli_base import LFCliBase
-import port_utils
-from port_utils import PortUtils
-from pprint import pprint
-import pprint
+import sys
+import os
+import importlib
 import time
+import logging
+
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
+
+port_utils = importlib.import_module("py-json.port_utils")
+PortUtils = port_utils.PortUtils
+lfcli_base = importlib.import_module("py-json.LANforge.lfcli_base")
+LFCliBase = lfcli_base.LFCliBase
+logger = logging.getLogger(__name__)
+
 
 class HTTPProfile(LFCliBase):
     def __init__(self, lfclient_host, lfclient_port, local_realm, debug_=False):
@@ -19,7 +27,8 @@ class HTTPProfile(LFCliBase):
         self.direction = "dl"
         self.dest = "/dev/null"
         self.port_util = PortUtils(self.local_realm)
-        self.max_speed = 0 #infinity
+        self.max_speed = 0  # infinity
+        self.quiesce_after = 0  # infinity
 
     def check_errors(self, debug=False):
         fields_list = ["!conn", "acc.+denied", "bad-proto", "bad-url", "other-err", "total-err", "rslv-p", "rslv-h",
@@ -37,15 +46,16 @@ class HTTPProfile(LFCliBase):
                             passes -= 1
                             debug_info[name] = {field: info[field.replace("+", " ")]}
             if debug:
-                print(debug_info)
+                logger.info(debug_info)
             if passes == expected_passes:
                 return True
             else:
-                print(list(debug_info), " Endps in this list showed errors getting to its URL")  # %s") % self.url)
+                # %s") % self.url)
+                logger.info(list(debug_info), " Endps in this list showed errors getting to its URL")
                 return False
 
     def start_cx(self):
-        print("Starting CXs...")
+        logger.info("Starting CXs...")
         for cx_name in self.created_cx.keys():
             self.json_post("/cli-json/set_cx_state", {
                 "test_mgr": "default_tm",
@@ -56,7 +66,7 @@ class HTTPProfile(LFCliBase):
         print("")
 
     def stop_cx(self):
-        print("Stopping CXs...")
+        logger.info("Stopping CXs...")
         for cx_name in self.created_cx.keys():
             self.json_post("/cli-json/set_cx_state", {
                 "test_mgr": "default_tm",
@@ -67,7 +77,7 @@ class HTTPProfile(LFCliBase):
         print("")
 
     def cleanup(self):
-        print("Cleaning up cxs and endpoints")
+        logger.info("Cleaning up cxs and endpoints")
         if len(self.created_cx) != 0:
             for cx_name in self.created_cx.keys():
                 req_url = "cli-json/rm_cx"
@@ -84,19 +94,33 @@ class HTTPProfile(LFCliBase):
                 self.json_post(req_url, data)
                 # pprint(data)
 
-    def map_sta_ips(self, sta_list=[]):
+    def map_sta_ips(self, sta_list=None):
+        if sta_list is None:
+            sta_list = []
         for sta_eid in sta_list:
             eid = self.local_realm.name_to_eid(sta_eid)
-            sta_list = self.json_get("/port/%s/%s/%s?fields=alias,ip" %
-                                     (eid[0], eid[1], eid[2]))
+            sta_list = self.json_get("/port/%s/%s/%s?fields=alias,ip" % (eid[0], eid[1], eid[2]))
+            # print("map_sta_ips - sta_list:{sta_list}".format(sta_list=sta_list))
+            '''
+            sta_list_tmp = self.json_get("/port/%s/%s/%s?fields=ip" % (eid[0], eid[1], eid[2]))
+            print("map_sta_ips - sta_list_tmp:{sta_list_tmp}".format(sta_list_tmp=sta_list_tmp))
+            '''
             if sta_list['interface'] is not None:
-                self.ip_map[sta_list['interface']['alias']] = sta_list['interface']['ip']
+                # print("map_sta_ips - sta_list_2:{sta_list_2}".format(sta_list_2=sta_list['interface']))
+                # self.ip_map[sta_list['interface']['alias']] = sta_list['interface']['ip']
+                eid_key = "{eid0}.{eid1}.{eid2}".format(eid0=eid[0], eid1=eid[1], eid2=eid[2])
+                self.ip_map[eid_key] = sta_list['interface']['ip']
 
-    def create(self, ports=[], sleep_time=.5, debug_=False, suppress_related_commands_=None, http=False, ftp=False,
-               https=False, user=None, passwd=None, source=None, ftp_ip=None, upload_name=None, http_ip=None, https_ip=None):
+    def create(self, ports=None, sleep_time=.5, debug_=False, suppress_related_commands_=None, http=False, ftp=False,
+               https=False, user=None, passwd=None, source=None, ftp_ip=None, upload_name=None, http_ip=None,
+               https_ip=None):
+        if ports is None:
+            ports = []
         cx_post_data = []
+        # print("http_profile - ports:{ports}".format(ports=ports))
         self.map_sta_ips(ports)
-        print("Create CXs...")
+        logger.info("Create HTTP CXs..." + __name__)
+        # print("http_profile - self.ip_map:{ip_map}".format(ip_map=self.ip_map))
 
         for i in range(len(list(self.ip_map))):
             url = None
@@ -110,11 +134,20 @@ class HTTPProfile(LFCliBase):
             if (ip_addr is None) or (ip_addr == ""):
                 raise ValueError("HTTPProfile::create encountered blank ip/hostname")
 
+            # print("http_profile - port_name:{port_name}".format(port_name=port_name))
+            rv = self.local_realm.name_to_eid(port_name)
+            # print("http_profile - rv:{rv}".format(rv=rv))
+            '''
             shelf = self.local_realm.name_to_eid(port_name)[0]
             resource = self.local_realm.name_to_eid(port_name)[1]
             name = self.local_realm.name_to_eid(port_name)[2]
+            '''
+            shelf = rv[0]
+            resource = rv[1]
+            name = rv[2]
+            # eid_port = "{shelf}.{resource}.{name}".format(shelf=rv[0], resource=rv[1], name=rv[2])
 
-            if upload_name != None:
+            if upload_name is not None:
                 name = upload_name
 
             if http:
@@ -133,12 +166,13 @@ class HTTPProfile(LFCliBase):
                     url = "%s https://%s/ %s" % (self.direction, ip_addr, self.dest)
 
             if ftp:
+                # print("create() - eid_port:{eid_port}".format(eid_port=eid_port))
                 self.port_util.set_ftp(port_name=name, resource=resource, on=True)
                 if user is not None and passwd is not None and source is not None:
                     if ftp_ip is not None:
-                        ip_addr=ftp_ip
+                        ip_addr = ftp_ip
                     url = "%s ftp://%s:%s@%s%s %s" % (self.direction, user, passwd, ip_addr, source, self.dest)
-                    print("###### url:{}".format(url))
+                    logger.info("###### url:{}".format(url))
                 else:
                     raise ValueError("user: %s, passwd: %s, and source: %s must all be set" % (user, passwd, source))
             if not http and not ftp and not https:
@@ -147,7 +181,7 @@ class HTTPProfile(LFCliBase):
             if (url is None) or (url == ""):
                 raise ValueError("HTTPProfile::create: url unset")
 
-            if upload_name ==None:
+            if upload_name is None:
                 endp_data = {
                     "alias": name + "_l4",
                     "shelf": shelf,
@@ -157,14 +191,17 @@ class HTTPProfile(LFCliBase):
                     "timeout": 10,
                     "url_rate": self.requests_per_ten,
                     "url": url,
-                    "proxy_auth_type": 0x200
+                    "proxy_auth_type": 0x200,
+                    "quiesce_after": self.quiesce_after,
+                    "max_speed": self.max_speed
                 }
             else:
                 endp_data = {
                     "alias": name + "_l4",
                     "shelf": shelf,
                     "resource": resource,
-                    "port": ports[0],
+                    # "port": ports[0],
+                    "port": rv[2],
                     "type": "l4_generic",
                     "timeout": 10,
                     "url_rate": self.requests_per_ten,
@@ -172,7 +209,8 @@ class HTTPProfile(LFCliBase):
                     "ssl_cert_fname": "ca-bundle.crt",
                     "proxy_port": 0,
                     "max_speed": self.max_speed,
-                    "proxy_auth_type": 0x200
+                    "proxy_auth_type": 0x200,
+                    "quiesce_after": self.quiesce_after
                 }
             url = "cli-json/add_l4_endp"
             self.local_realm.json_post(url, endp_data, debug_=debug_,
@@ -185,6 +223,7 @@ class HTTPProfile(LFCliBase):
                 "tx_endp": name + "_l4",
                 "rx_endp": "NA"
             }
+            # print("http_profile - endp_data:{endp_data}".format(endp_data=endp_data))
             cx_post_data.append(endp_data)
             self.created_cx[name + "_l4"] = "CX_" + name + "_l4"
 

@@ -1,33 +1,32 @@
 #!/usr/bin/env python3
-
 import sys
 import os
+import importlib
+import argparse
+import time
+import datetime
 
 if sys.version_info[0] != 3:
     print("This script requires Python 3")
     exit(1)
 
-if 'py-json' not in sys.path:
-    sys.path.append(os.path.join(os.path.abspath('..'), 'py-json'))
+sys.path.append(os.path.join(os.path.abspath(__file__ + "../../../")))
 
-import argparse
-from LANforge.lfcli_base import LFCliBase
-from LANforge import LFUtils
-import realm
-import time
-import datetime
+LFUtils = importlib.import_module("py-json.LANforge.LFUtils")
+realm = importlib.import_module("py-json.realm")
+Realm = realm.Realm
 
 
-class IPV4VariableTime(LFCliBase):
+class IPV4VariableTime(Realm):
     def __init__(self, ssid, security, password, sta_list, name_prefix, upstream, radio,
-                host="localhost", port=8080,
+                 radio2, host="localhost", port=8080,
                  side_a_min_rate=56, side_a_max_rate=0,
                  side_b_min_rate=56, side_b_max_rate=0,
                  number_template="00000", test_duration="5m", use_ht160=False,
                  _debug_on=False,
                  _exit_on_error=False,
                  _exit_on_fail=False):
-        super().__init__(host, port, _debug=_debug_on, _exit_on_fail=_exit_on_fail)
+        super().__init__(lfclient_host=host, lfclient_port=port)
         self.upstream = upstream
         self.host = host
         self.port = port
@@ -36,16 +35,16 @@ class IPV4VariableTime(LFCliBase):
         self.security = security
         self.password = password
         self.radio = radio
+        self.radio2 = radio2
         self.number_template = number_template
         self.debug = _debug_on
         self.name_prefix = name_prefix
         self.test_duration = test_duration
-        self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
-        self.station_profile = self.local_realm.new_station_profile()
-        self.cx_profile = self.local_realm.new_l3_cx_profile()
-        self.vap_profile = self.local_realm.new_vap_profile()
+        self.station_profile = self.new_station_profile()
+        self.cx_profile = self.new_l3_cx_profile()
+        self.vap_profile = self.new_vap_profile()
         self.vap_profile.vap_name = "vap0000"
-        self.monitor = realm.WifiMonitor(self.lfclient_url, self.local_realm, debug_=_debug_on)
+        self.monitor = self.new_wifi_monitor_profile(debug_=_debug_on)
 
         self.station_profile.lfclient_url = self.lfclient_url
         self.station_profile.ssid = self.ssid
@@ -76,7 +75,8 @@ class IPV4VariableTime(LFCliBase):
                             cx_rx_map[item] = value_rx
         return cx_rx_map
 
-    def __compare_vals(self, old_list, new_list):
+    @staticmethod
+    def __compare_vals(old_list, new_list):
         passes = 0
         expected_passes = 0
         if len(old_list) == len(new_list):
@@ -103,9 +103,9 @@ class IPV4VariableTime(LFCliBase):
 
         self.vap_profile.set_command_flag("add_vap", "use-bss-load", 1)
         self.vap_profile.set_command_flag("add_vap", "use-bss-transition", 1)
-        self.vap_profile.create(resource=1, radio="wiphy1", channel=161, up_=True, debug=False,
+        self.vap_profile.create(resource=1, radio="wiphy1", channel=161, up_=True, debug=self.debug,
                                 suppress_related_commands_=True)
-        self.monitor.create(resource_=1, channel=161, radio_="wiphy2", name_="moni0")
+        self.monitor.create(resource_=1, channel=161, radio_=self.radio2, name_="moni0")
         self.station_profile.create(radio=self.radio, sta_names_=self.sta_list, debug=self.debug)
         self.cx_profile.create(endp_type="lf_udp", side_a=self.station_profile.station_names, side_b=self.upstream,
                                sleep_time=0)
@@ -116,14 +116,14 @@ class IPV4VariableTime(LFCliBase):
         self.vap_profile.admin_up(1)
         temp_stas = self.station_profile.station_names.copy()
         temp_stas.append(self.upstream)
-        if self.local_realm.wait_for_ip(temp_stas):
+        if self.wait_for_ip(temp_stas):
             self._pass("All stations got IPs", print_pass)
         else:
             self._fail("Stations failed to get IPs", print_fail)
             exit(1)
         cur_time = datetime.datetime.now()
         old_cx_rx_values = self.__get_rx_values()
-        end_time = self.local_realm.parse_time(self.test_duration) + cur_time
+        end_time = self.parse_time(self.test_duration) + cur_time
         self.cx_profile.start_cx()
         passes = 0
         expected_passes = 0
@@ -159,7 +159,7 @@ class IPV4VariableTime(LFCliBase):
     def pre_cleanup(self):
         self.cx_profile.cleanup_prefix()
         for sta in self.sta_list:
-            self.local_realm.rm_port(sta, check_exists=True)
+            self.rm_port(sta, check_exists=True, debug_=self.debug)
 
     def cleanup(self):
         self.cx_profile.cleanup()
@@ -170,8 +170,7 @@ class IPV4VariableTime(LFCliBase):
 
 
 def main():
-
-    parser = LFCliBase.create_basic_argparse(
+    parser = Realm.create_basic_argparse(
         prog='test_ipv4_variable_time.py',
         # formatter_class=argparse.RawDescriptionHelpFormatter,
         formatter_class=argparse.RawTextHelpFormatter,
@@ -192,20 +191,15 @@ Generic command layout:
 --test_duration 2m
 --debug
         ''')
-    required = None
-    for agroup in parser._action_groups:
-        if agroup.title == "required arguments":
-            required = agroup
-    #if required is not None:
-
     optional = None
     for agroup in parser._action_groups:
         if agroup.title == "optional arguments":
             optional = agroup
-    if optional is not None: 
+    if optional is not None:
         optional.add_argument('--a_min', help='--a_min bps rate minimum for side_a', default=256000)
         optional.add_argument('--b_min', help='--b_min bps rate minimum for side_b', default=256000)
         optional.add_argument('--test_duration', help='--test_duration sets the duration of the test', default="5m")
+        optional.add_argument('--radio2', help='radio to create monitor on', default='1.wiphy2')
 
     args = parser.parse_args()
     num_sta = 2
@@ -213,8 +207,7 @@ Generic command layout:
         num_stations_converted = int(args.num_stations)
         num_sta = num_stations_converted
 
-
-    station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=num_sta-1, padding_number_=10000,
+    station_list = LFUtils.portNameSeries(prefix_="sta", start_id_=0, end_id_=num_sta - 1, padding_number_=10000,
                                           radio=args.radio)
 
     ip_var_test = IPV4VariableTime(host=args.mgr, port=args.mgr_port,
@@ -225,6 +218,7 @@ Generic command layout:
                                    ssid=args.ssid,
                                    password=args.passwd,
                                    radio=args.radio,
+                                   radio2=args.radio2,
                                    security=args.security, test_duration=args.test_duration, use_ht160=False,
                                    side_a_min_rate=args.a_min, side_b_min_rate=args.b_min, _debug_on=args.debug)
 
