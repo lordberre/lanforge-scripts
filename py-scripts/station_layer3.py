@@ -16,7 +16,7 @@ import realm
 from realm import Realm
 
 class STATION(LFCliBase):
-    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radio, sta_list=None, name_prefix="L3Test", upstream="eth2"):
+    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radio, sta_list=None, name_prefix="L3Test", upstream="eth1"):
         super().__init__(lfclient_host, lfclient_port)
         self.host = lfclient_host
         self.port = lfclient_port
@@ -52,9 +52,9 @@ class STATION(LFCliBase):
                                            debug=self.debug)
         time.sleep(1)
 
-    def build(self):
+    def build(self, num_sta):
         self.station_profile.use_security(self.security, self.ssid, self.paswd)
-        self.station_profile.create(radio=self.radio)
+        self.station_profile.create(radio=self.radio, num_stations=num_sta)
         self.cx_profile.create(endp_type="lf_udp", side_a=self.station_profile.station_names, side_b=self.upstream,
                                sleep_time=0)
 
@@ -93,9 +93,10 @@ def main():
                                             end_id=num_sta - 1,
                                             padding_number=10000,
                                             radio=args.radio)
-    obj = STATION(lfclient_host= args.host, lfclient_port=8080, ssid=args.ssid , paswd=args.passwd, security=args.security, radio=args.radio, sta_list=station_list)
+    obj = STATION(lfclient_host= args.host, lfclient_port=8008, ssid=args.ssid , paswd=args.passwd, security=args.security, radio=args.radio, sta_list=station_list)
+    print('station_list:', station_list)
     obj.precleanup(station_list)
-    obj.build()
+    obj.build(num_sta)
     obj.start(station_list)
 
 

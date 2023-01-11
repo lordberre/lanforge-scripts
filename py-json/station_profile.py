@@ -431,6 +431,8 @@ class StationProfile:
         wifi_extra_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_wifi_extra", debug_=debug)
         wifi_txo_r = LFRequest.LFRequest(self.lfclient_url + "/cli-json/set_wifi_txo", debug_=debug)
         my_sta_names = []
+        if sta_names_ is None:
+            sta_names_ = []
         # add radio here
         if (num_stations > 0) and (len(sta_names_) < 1):
             # print("CREATING MORE STA NAMES == == == == == == == == == == == == == == == == == == == == == == == ==")
