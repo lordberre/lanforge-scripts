@@ -122,7 +122,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.shelf = "1"
         self.resource = "1"
         # "1.1.eth1" = MobileStations eth1
-        self.full_upstream_path = self.resource + "." + self.resource + "." + self.upstream 
+        self.full_upstream_path = self.shelf + "." + self.resource + "." + self.upstream 
         self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
         self.station_profile = self.local_realm.new_station_profile()
         self.station_profile.ssid = self.ssid
@@ -138,6 +138,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.num_iterations = 1  # Number of full iterations (0 -> 95 dB) to perform before quitting.
         self.step_length_sec = 15  # Number of seconds to run traffic per attenuation step
         self.max_attempts_on_fail = 3  # Number of times to retry an attenuation step before going to the next DUT or iteration
+        self.total_fail_threshold = 0.90  # Percentage of tests in total that needs to fail before going to the next DUT or iteration
 
         requested_tput = 10000000000  # 10 Gbit/s
         if self.traffic_direction == 'downstream':
@@ -181,8 +182,17 @@ class Tele2RateVersusRange(LFCliBase):
             self.add_event(name='T2EndpointStats', message=endpoint_map)
 
     def collect_stats(self):
-        self.port_stats_to_event()
-        self.endpoint_stats_to_event()
+        try:
+            self.port_stats_to_event()
+            self.endpoint_stats_to_event()
+        except KeyError as err:
+            self.add_event_and_print(name='T2RvR_APIError', message='KeyError in collect_stats: {}'.format(err))
+
+    def add_event_and_print(self, **args):
+        if 'message' not in args or 'name' not in args:
+            raise("Invalid event. Must have 'name' and 'message' args")
+        print("[T2RvR] {}".format(args['message']))
+        self.add_event(**args)
 
     def wait_for_cx_to_start(self, cxs=None, timeout=300):
         for x in cxs:
@@ -246,17 +256,17 @@ class Tele2RateVersusRange(LFCliBase):
         # Set up attenuators
         if self.attenuator is not None:
             print('Configuring attenuators.......')
-            self.attenuator.base_profile()
+            self.attenuator.base_profile()  # TEMPORARY
             print('Finished configuring attenuators!')
         else:
             exit('Error: No attenuator detected')
 
-    def start_station_traffic(self):
+    def start_station_traffic(self, timeout_sec=30):
         self.station_profile.admin_up()
         temp_stas = self.station_profile.station_names.copy()
         # temp_stas = sta_list
         print('station_profile.station_names:', temp_stas)
-        if self.local_realm.wait_for_ip(temp_stas):
+        if self.local_realm.wait_for_ip(temp_stas, timeout_sec=timeout_sec):
             self._pass("All stations got IPs")
         else:
             self._fail("Stations failed to get IPs")
@@ -265,7 +275,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.cx_profile.start_cx()
         print('Waiting for these cross endpoints to appear:', self.cx_profile.get_cx_names())
         self.local_realm.wait_until_cxs_appear(self.cx_profile.get_cx_names())
-        self.wait_for_cx_to_start(self.cx_profile.get_cx_names())
+        self.wait_for_cx_to_start(self.cx_profile.get_cx_names(), timeout=timeout_sec)
         time.sleep(1)
  
     def start(self):
@@ -279,27 +289,42 @@ class Tele2RateVersusRange(LFCliBase):
                     continue
                 self.attenuator.base_profile()
 
-                fail_counter = 0
+                dut_total_counter, dut_fail_counter, dut_total_fails = 0, 0, 0
                 for step, ddb in enumerate(range(0, 1000, self.attenuator.ddb_step_size)):
                     if skip_dut:
                         break
                     if step != 0:
                         self.attenuator.increase_attenuation(i, ddb)
                     
-                    status_msg = '[Iteration={}|DUT={}|atten={}] Starting traffic on stations for {} seconds..'.format(i, dut, ddb, self.step_length_sec)
-                    self.add_event(name="Tele2RvREvent", message=status_msg)
+                    self.add_event_and_print(name='T2RvR_Status', message='[Iteration={}|DUT={}|atten={}] Starting traffic on stations for {} seconds..'.format(i, dut, ddb, self.step_length_sec))
                     try:
-                        self.start_station_traffic()
-                    except ConnectionError:
-                        print("Stations failed to get IPs")
-                        fail_counter += 1
-
-                        # Give up this DUT if we've failed too many times or if we're at very low attenuation
-                        if fail_counter > self.max_attempts_on_fail or (ddb < 100 and self.max_attempts_on_fail > 2):
+                        if dut_total_counter > 5 and dut_total_fails/dut_total_counter > self.total_fail_threshold:
+                            self.add_event_and_print(name='T2RvR_DUTError', message='Skipping DUT {} due to too many failures in total (>{}%)'.format(dut, self.total_fail_threshold*100))
                             skip_dut = True
                             break
-                    else:  # Reset fail counter if we succeed
-                        fail_counter = 0
+                        else:
+                            # Increase timeout for first step
+                            if step == 0:
+                                self.start_station_traffic(timeout_sec=360)
+                            else:
+                                self.start_station_traffic()
+                    except ConnectionError:
+                        self.add_event_and_print(name='T2RvR_DUTError', message="Stations failed to get IPs")
+                        dut_fail_counter += 1
+                        dut_total_fails += 1
+
+                        if step == 0:
+                            self.add_event_and_print(name='T2RvR_DUTError', message='Skipping DUT {} due to failure on first step'.format(dut))
+                            skip_dut = True
+                            break
+
+                        # Give up this DUT if we've failed too many times in a row
+                        if dut_fail_counter > self.max_attempts_on_fail:
+                            self.add_event_and_print(name='T2RvR_DUTError', message='Skipping DUT {} due to too many failures in a row ({})'.format(dut, self.max_attempts_on_fail))
+                            skip_dut = True
+                            break
+                    else:  # Reset non-total fail counter if we succeed
+                        dut_fail_counter = 0
                         step_end_ts = time.time() + self.step_length_sec + 5
                         while True:
                             print('Collecting stats...')
@@ -308,6 +333,7 @@ class Tele2RateVersusRange(LFCliBase):
                             if time.time() > step_end_ts:
                                 break
                     finally:
+                        dut_total_counter += 1
                         self.stop()
 
     def stop(self):
