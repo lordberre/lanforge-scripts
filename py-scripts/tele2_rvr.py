@@ -5,9 +5,7 @@
     The connections are not started, nor are stations set admin up in this script.
 
     Example script:
-    './tele2_rvr.py --radio wiphy0 --ssid lanforge --password password --security wpa2'
-    './tele2_rvr.py --station_list sta00,sta01 --radio wiphy0 --ssid lanforge --password password --security wpa2'
-    './tele2_rvr.py --station_list sta00 sta01 --radio wiphy0 --ssid lanforge --password password --security wpa2'
+    python3 tele2_rvr.py --host 192.168.0.10 --port 8080 --ssid "DUT-CPELAB" --passwd x --security wpa2 --radio wiphy0
 """
 
 import os
@@ -94,15 +92,18 @@ class CreateRvRAttenuator(Realm):
         self._configure('3073', 2, 955)            # Conducted Node1
         self._configure('3073', 3, 955)            # Conducted Node1
         self._configure('3076', 'all', 955)
-        self._configure('3084', 'all', 955)        # RvR client in MobileStations chamber
+        self._configure('3084', 'all', 0)        # RvR client in MobileStations chamber
         self._apply()
         self._print(iteration, 0)
 
-    def increase_attenuation(self, iteration):
-        self._configure('3084', 'all', self.ddb_step_size)
+    def increase_attenuation(self, iteration, attenuation_ddb):
+        self._configure('3084', 'all', attenuation_ddb)
         self._apply()
         self._print(iteration, 0)
 
+
+class EventProducer(LFCliBase):
+    pass
 
 class Tele2RateVersusRange(LFCliBase):
     def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radio, duts, sta_list=None, name_prefix="T2RvR", upstream="eth1", traffic_direction='downstream'):
@@ -118,7 +119,10 @@ class Tele2RateVersusRange(LFCliBase):
         self.upstream = upstream
         self.traffic_direction = traffic_direction
         self.duts = duts
-
+        self.shelf = "1"
+        self.resource = "1"
+        # "1.1.eth1" = MobileStations eth1
+        self.full_upstream_path = self.resource + "." + self.resource + "." + self.upstream 
         self.local_realm = realm.Realm(lfclient_host=self.host, lfclient_port=self.port)
         self.station_profile = self.local_realm.new_station_profile()
         self.station_profile.ssid = self.ssid
@@ -133,6 +137,7 @@ class Tele2RateVersusRange(LFCliBase):
         # RvR settings
         self.num_iterations = 1  # Number of full iterations (0 -> 95 dB) to perform before quitting.
         self.step_length_sec = 15  # Number of seconds to run traffic per attenuation step
+        self.max_attempts_on_fail = 3  # Number of times to retry an attenuation step before going to the next DUT or iteration
 
         requested_tput = 10000000000  # 10 Gbit/s
         if self.traffic_direction == 'downstream':
@@ -146,8 +151,38 @@ class Tele2RateVersusRange(LFCliBase):
             self.cx_profile.side_a_min_bps = 0
             self.cx_profile.side_a_max_bps = 0
 
-    def next_rvr_step(self):
-       pass
+    def port_stats_to_event(self):
+        port_map = dict()
+        ports = self.json_get('/port/list')
+        if ports is None:
+            raise("No data")
+        for record in ports['interfaces']:
+            for full_port_name, entry in record.items():
+                # Ignore other ports or stations not defined in the test
+                if full_port_name == self.full_upstream_path or full_port_name in self.station_profile.station_names.copy():
+                    urlEntry = entry['port'].replace('.', '/')
+                    port_data = self.json_get('/port/' + urlEntry)
+                    port_map[entry['port']] = port_data
+        if len(port_map) > 0:
+            self.add_event(name='T2PortStats', message=port_data)
+
+    def endpoint_stats_to_event(self):
+        endpoint_map = dict()
+        endpoints = self.json_get('/endp/list')
+        if endpoints is None:
+            raise('No endpoint data')
+        for record in endpoints['endpoint']:
+            for alias, entry in record.items():
+                port = '.'.join(entry['entity id'].split('.')[:3])
+                endpoint = self.json_get('/endp/' + alias)
+                endpoint_map[port] = endpoint
+        if len(endpoint_map) > 0:
+            # endpoint_msg = json.dumps(endpoint_map)
+            self.add_event(name='T2EndpointStats', message=endpoint_map)
+
+    def collect_stats(self):
+        self.port_stats_to_event()
+        self.endpoint_stats_to_event()
 
     def wait_for_cx_to_start(self, cxs=None, timeout=300):
         for x in cxs:
@@ -196,7 +231,7 @@ class Tele2RateVersusRange(LFCliBase):
         time.sleep(5)
 
     def build(self):
-        # self.load_blank_database()
+        self.load_blank_database()
         resource = 1
 
         # Initiate the upstream port
@@ -211,7 +246,7 @@ class Tele2RateVersusRange(LFCliBase):
         # Set up attenuators
         if self.attenuator is not None:
             print('Configuring attenuators.......')
-            # self.attenuator.base_profile()
+            self.attenuator.base_profile()
             print('Finished configuring attenuators!')
         else:
             exit('Error: No attenuator detected')
@@ -225,7 +260,8 @@ class Tele2RateVersusRange(LFCliBase):
             self._pass("All stations got IPs")
         else:
             self._fail("Stations failed to get IPs")
-            self.exit_fail()
+            # This will ultimately happen when attenuation is high enough
+            raise(ConnectionError("Stations failed to get IPs"))
         self.cx_profile.start_cx()
         print('Waiting for these cross endpoints to appear:', self.cx_profile.get_cx_names())
         self.local_realm.wait_until_cxs_appear(self.cx_profile.get_cx_names())
@@ -235,16 +271,44 @@ class Tele2RateVersusRange(LFCliBase):
     def start(self):
         print('Starting RvR test for {} iterations...'.format(self.num_iterations))
         self.precleanup()
-        self.create_station() 
+        self.create_station()
         for i in range(self.num_iterations):
+            skip_dut = False
             for dut in self.duts:
+                if skip_dut:
+                    continue
+                self.attenuator.base_profile()
+
+                fail_counter = 0
                 for step, ddb in enumerate(range(0, 1000, self.attenuator.ddb_step_size)):
+                    if skip_dut:
+                        break
                     if step != 0:
-                        self.attenuator.increase_attenuation(i)
-                    self.start_station_traffic()
-                    print('[Iteration={}|DUT={}|atten={}] Running traffic on stations for {} seconds..'.format(self.num_iterations, dut, ddb, self.step_length_sec))
-                    time.sleep(self.step_length_sec)
-                    self.stop()
+                        self.attenuator.increase_attenuation(i, ddb)
+                    
+                    status_msg = '[Iteration={}|DUT={}|atten={}] Starting traffic on stations for {} seconds..'.format(i, dut, ddb, self.step_length_sec)
+                    self.add_event(name="Tele2RvREvent", message=status_msg)
+                    try:
+                        self.start_station_traffic()
+                    except ConnectionError:
+                        print("Stations failed to get IPs")
+                        fail_counter += 1
+
+                        # Give up this DUT if we've failed too many times or if we're at very low attenuation
+                        if fail_counter > self.max_attempts_on_fail or (ddb < 100 and self.max_attempts_on_fail > 2):
+                            skip_dut = True
+                            break
+                    else:  # Reset fail counter if we succeed
+                        fail_counter = 0
+                        step_end_ts = time.time() + self.step_length_sec + 5
+                        while True:
+                            print('Collecting stats...')
+                            self.collect_stats()
+                            time.sleep(0.5)
+                            if time.time() > step_end_ts:
+                                break
+                    finally:
+                        self.stop()
 
     def stop(self):
         # Bring stations down
