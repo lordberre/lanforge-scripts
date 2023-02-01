@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 """
-    This script will create a variable number of layer3 stations each with their own set of cross-connects and endpoints.
-    The connections are not started, nor are stations set admin up in this script.
+    This script will create a streamed RvR test on multiple DUTs. For each DUT, a non-standard RvR test is performed on the configured radios and traffic directions.
+    The test results are collected from the LANForge API and streamed to the telemetry API.
 
     Example script:
-    python3 tele2_rvr.py --host 192.168.0.10 --port 8080 --ssid "DUT-CPELAB" --passwd x --security wpa2 --radio wiphy0
+    python3 tele2_rvr.py --host 192.168.0.10 --port 8080 --ssid "DUT-CPELAB" --passwd x --security wpa2 --duts x,y --radios wiphy0,wiphy1
 """
 
 import os
@@ -16,7 +16,7 @@ import argparse
 import time
 if 'py-json' not in sys.path:
     sys.path.append('../py-json')
-from LANforge import LFUtils
+from LANforge import LFUtils, LFRequest
 from LANforge import lfcli_base
 from LANforge.lfcli_base import LFCliBase
 from LANforge.LFUtils import *
@@ -81,18 +81,21 @@ class CreateRvRAttenuator(Realm):
     def reset_all(self):
         self.defaults.create()
     
-    def base_profile(self, iteration=0):
+    def base_profile(self, iteration=0, minimal=False):
         self.attenuator_profile = self.new_attenuator_profile()
-        self._configure('3066', 'all', 955)
-        self._configure('3067', 'all', 955)        # Node2 (Air)
-        self._configure('3068', 'all', 955)
-        self._configure('3070', 'all', 955)        # Node1
-        self._configure('3073', 0, 955)            # Conducted Node2
-        self._configure('3073', 1, 955)            # Conducted Node2
-        self._configure('3073', 2, 955)            # Conducted Node1
-        self._configure('3073', 3, 955)            # Conducted Node1
-        self._configure('3076', 'all', 955)
-        self._configure('3084', 'all', 0)        # RvR client in MobileStations chamber
+        if minimal:
+            self._configure('3084', 'all', 0)
+        else:    
+            self._configure('3066', 'all', 955)
+            self._configure('3067', 'all', 955)        # Node2 (Air)
+            self._configure('3068', 'all', 955)
+            self._configure('3070', 'all', 955)        # Node1
+            self._configure('3073', 0, 955)            # Conducted Node2
+            self._configure('3073', 1, 955)            # Conducted Node2
+            self._configure('3073', 2, 955)            # Conducted Node1
+            self._configure('3073', 3, 955)            # Conducted Node1
+            self._configure('3076', 'all', 955)
+            self._configure('3084', 'all', 0)        # RvR client in MobileStations chamber
         self._apply()
         self._print(iteration, 0)
 
@@ -102,23 +105,20 @@ class CreateRvRAttenuator(Realm):
         self._print(iteration, 0)
 
 
-class EventProducer(LFCliBase):
+class DUTController():
     pass
 
 class Tele2RateVersusRange(LFCliBase):
-    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radio, duts, sta_list=None, name_prefix="T2RvR", upstream="eth1", traffic_direction='downstream'):
+    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radios, duts, name_prefix="T2RvR", upstream="eth1", traffic_direction='downstream'):
         super().__init__(lfclient_host, lfclient_port)
         self.host = lfclient_host
         self.port = lfclient_port
         self.ssid = ssid
         self.paswd = paswd
         self.security = security
-        self.radio = radio
-        self.sta_list = sta_list
         self.name_prefix = name_prefix
         self.upstream = upstream
         self.traffic_direction = traffic_direction
-        self.duts = duts
         self.shelf = "1"
         self.resource = "1"
         # "1.1.eth1" = MobileStations eth1
@@ -128,29 +128,28 @@ class Tele2RateVersusRange(LFCliBase):
         self.station_profile.ssid = self.ssid
         self.station_profile.ssid_pass = self.paswd
         self.station_profile.security = self.security
-        self.cx_profile = self.local_realm.new_l3_cx_profile()
-        self.cx_profile.host = self.host
-        self.cx_profile.port = self.port
-        self.cx_profile.name_prefix = self.name_prefix
         self.attenuator = CreateRvRAttenuator(host=self.host, port=self.port, serno='all', idx='all', val=955)
+        self.num_sta = 1
+
+        # Traffic settings. (Looping not yet implemented)
+        self.traffic_directions = ('downstream', 'upstream')
+        self.create_cx('downstream')
+
+        # Where to dump all the l2/l3 stats
+        self.telemetry_stats_host = 'http://127.0.0.1:8082'
+        self.telemetry_stats_endpoint = '/lanforge_stats'
 
         # RvR settings
+        self.duts = [item for item in duts.split(',')]
+        self.radios = [item for item in radios.split(',')]
+        if len(self.duts) == 0 or len(self.radios) == 0:
+            raise ValueError("No DUTs or radios specified: {} -> {}".format(self.duts, self.radios))
+        self.sta_list = [LFUtils.port_name_series(prefix="sta", start_id=0, end_id=self.num_sta - 1, padding_number=10000, radio=radio) for radio in self.radios]
+        self.sta_list = [item for sublist in self.sta_list for item in sublist]
         self.num_iterations = 1  # Number of full iterations (0 -> 95 dB) to perform before quitting.
         self.step_length_sec = 15  # Number of seconds to run traffic per attenuation step
         self.max_attempts_on_fail = 3  # Number of times to retry an attenuation step before going to the next DUT or iteration
         self.total_fail_threshold = 0.90  # Percentage of tests in total that needs to fail before going to the next DUT or iteration
-
-        requested_tput = 10000000000  # 10 Gbit/s
-        if self.traffic_direction == 'downstream':
-            self.cx_profile.side_a_min_bps = requested_tput
-            self.cx_profile.side_a_max_bps = self.cx_profile.side_a_min_bps
-            self.cx_profile.side_b_min_bps = 0
-            self.cx_profile.side_b_max_bps = 0
-        elif self.traffic_direction == 'upstream':
-            self.cx_profile.side_b_min_bps = requested_tput
-            self.cx_profile.side_b_max_bps = self.cx_profile.side_b_max_bps
-            self.cx_profile.side_a_min_bps = 0
-            self.cx_profile.side_a_max_bps = 0
 
     def port_stats_to_event(self):
         port_map = dict()
@@ -165,7 +164,20 @@ class Tele2RateVersusRange(LFCliBase):
                     port_data = self.json_get('/port/' + urlEntry)
                     port_map[entry['port']] = port_data
         if len(port_map) > 0:
-            self.add_event(name='T2PortStats', message=port_data)
+            self.telemetry_post(port_map)
+
+    def telemetry_post(self, data, debug=False):
+        lf_r = LFRequest.LFRequest(url=self.telemetry_stats_host,
+                                       uri=self.telemetry_stats_endpoint,
+                                       debug_=debug,
+                                       die_on_error_=self.exit_on_error)
+        lf_r.addPostData(data)
+        json_response = lf_r.json_post(show_error=debug,
+                                           debug=debug,
+                                           die_on_error_=self.exit_on_error)
+        if json_response is None:
+            self.add_event_and_print(name='T2RvR_TelemetryError', message='Failed to post data to telemetry cache')
+        return json_response
 
     def endpoint_stats_to_event(self):
         endpoint_map = dict()
@@ -178,8 +190,7 @@ class Tele2RateVersusRange(LFCliBase):
                 endpoint = self.json_get('/endp/' + alias)
                 endpoint_map[port] = endpoint
         if len(endpoint_map) > 0:
-            # endpoint_msg = json.dumps(endpoint_map)
-            self.add_event(name='T2EndpointStats', message=endpoint_map)
+            self.telemetry_post(endpoint_map)
 
     def collect_stats(self):
         try:
@@ -191,6 +202,7 @@ class Tele2RateVersusRange(LFCliBase):
     def add_event_and_print(self, **args):
         if 'message' not in args or 'name' not in args:
             raise("Invalid event. Must have 'name' and 'message' args")
+        # args['debug_'] = True
         print("[T2RvR] {}".format(args['message']))
         self.add_event(**args)
 
@@ -211,15 +223,20 @@ class Tele2RateVersusRange(LFCliBase):
                     time.sleep(1)
 
     # Create stations and l3 endpoints
-    def create_station(self, autostart=False):
+    def create_station(self, autostart=False, radio='wiphy0'):
         self.station_profile.use_security(self.security, self.ssid, self.paswd)
-        self.station_profile.create(radio=self.radio, sta_names_=self.sta_list)
+
+        # Force 11n mode for 2.4 GHz radio tests to avoid non-standard 11ac usage
+        if radio == 'wiphy0':
+            self.station_profile.mode = 5
+        self.station_profile.create(radio=radio, sta_names_=self.sta_list)
         print('sta_names_: {}, station_profile.station_names: {}'.format(self.sta_list, self.station_profile.station_names))
         self.cx_profile.create(endp_type="lf_tcp", side_a=self.station_profile.station_names, side_b=self.upstream, sleep_time=1)
         if autostart:
             self.start_station_traffic()
 
     def precleanup(self):
+        self.attenuator.base_profile(minimal=True)
         self.cx_profile.cleanup_prefix()
         for sta in self.sta_list:
             self.local_realm.rm_port(sta, check_exists=True)
@@ -242,24 +259,35 @@ class Tele2RateVersusRange(LFCliBase):
 
     def build(self):
         self.load_blank_database()
-        resource = 1
 
         # Initiate the upstream port
         try:
-            data = LFUtils.port_dhcp_up_request(resource, self.upstream)
+            data = LFUtils.port_dhcp_up_request(self.resource, self.upstream)
             print("set_port request data: {}".format(data))
             self.json_post("/cli-json/set_port", data)
         except:
             print("LFUtils.port_dhcp_up_request didn't complete ")
             print("or the json_post failed either way {} did not set up dhcp so test may not pass data ".format(self.side_b))
 
-        # Set up attenuators
-        if self.attenuator is not None:
-            print('Configuring attenuators.......')
-            self.attenuator.base_profile()  # TEMPORARY
-            print('Finished configuring attenuators!')
-        else:
+        if self.attenuator is None:
             exit('Error: No attenuator detected')
+
+    def create_cx(self, traffic_direction='downstream'):
+        requested_tput = 10000000000  # 10 Gbit/s
+        self.cx_profile = self.local_realm.new_l3_cx_profile()
+        self.cx_profile.host = self.host
+        self.cx_profile.port = self.port
+        self.cx_profile.name_prefix = self.name_prefix
+        if traffic_direction == 'downstream':
+            self.cx_profile.side_a_min_bps = requested_tput
+            self.cx_profile.side_a_max_bps = self.cx_profile.side_a_min_bps
+            self.cx_profile.side_b_min_bps = 0
+            self.cx_profile.side_b_max_bps = 0
+        elif traffic_direction == 'upstream':
+            self.cx_profile.side_b_min_bps = requested_tput
+            self.cx_profile.side_b_max_bps = self.cx_profile.side_b_max_bps
+            self.cx_profile.side_a_min_bps = 0
+            self.cx_profile.side_a_max_bps = 0
 
     def start_station_traffic(self, timeout_sec=30):
         self.station_profile.admin_up()
@@ -279,62 +307,71 @@ class Tele2RateVersusRange(LFCliBase):
         time.sleep(1)
  
     def start(self):
-        print('Starting RvR test for {} iterations...'.format(self.num_iterations))
+        self.add_event_and_print(name='T2RvR_Status', message='<<<<<<<<<<< Starting T2RvR test for {} iterations on DUTs: {} >>>>>>>>>>>>'.
+            format(self.num_iterations, self.duts))
         self.precleanup()
-        self.create_station()
         for i in range(self.num_iterations):
             skip_dut = False
             for dut in self.duts:
                 if skip_dut:
                     continue
-                self.attenuator.base_profile()
-
                 dut_total_counter, dut_fail_counter, dut_total_fails = 0, 0, 0
-                for step, ddb in enumerate(range(0, 1000, self.attenuator.ddb_step_size)):
+                for radio in self.radios:
+                    self.add_event_and_print(name='T2RvR_Status', message='Starting T2RvR test for DUT={} and Radio={}'.format(dut, radio))
+                    self.create_station(radio)
                     if skip_dut:
                         break
-                    if step != 0:
-                        self.attenuator.increase_attenuation(i, ddb)
-                    
-                    self.add_event_and_print(name='T2RvR_Status', message='[Iteration={}|DUT={}|atten={}] Starting traffic on stations for {} seconds..'.format(i, dut, ddb, self.step_length_sec))
-                    try:
-                        if dut_total_counter > 5 and dut_total_fails/dut_total_counter > self.total_fail_threshold:
-                            self.add_event_and_print(name='T2RvR_DUTError', message='Skipping DUT {} due to too many failures in total (>{}%)'.format(dut, self.total_fail_threshold*100))
-                            skip_dut = True
-                            break
-                        else:
-                            # Increase timeout for first step
-                            if step == 0:
-                                self.start_station_traffic(timeout_sec=360)
-                            else:
-                                self.start_station_traffic()
-                    except ConnectionError:
-                        self.add_event_and_print(name='T2RvR_DUTError', message="Stations failed to get IPs")
-                        dut_fail_counter += 1
-                        dut_total_fails += 1
+                    self.attenuator.base_profile(minimal=True)
 
-                        if step == 0:
-                            self.add_event_and_print(name='T2RvR_DUTError', message='Skipping DUT {} due to failure on first step'.format(dut))
-                            skip_dut = True
+                    for step, ddb in enumerate(range(0, 1000, self.attenuator.ddb_step_size)):
+                        if skip_dut:
                             break
-
-                        # Give up this DUT if we've failed too many times in a row
-                        if dut_fail_counter > self.max_attempts_on_fail:
-                            self.add_event_and_print(name='T2RvR_DUTError', message='Skipping DUT {} due to too many failures in a row ({})'.format(dut, self.max_attempts_on_fail))
-                            skip_dut = True
-                            break
-                    else:  # Reset non-total fail counter if we succeed
-                        dut_fail_counter = 0
-                        step_end_ts = time.time() + self.step_length_sec + 5
-                        while True:
-                            print('Collecting stats...')
-                            self.collect_stats()
-                            time.sleep(0.5)
-                            if time.time() > step_end_ts:
+                        if step != 0:
+                            self.attenuator.increase_attenuation(i, ddb)
+                        
+                        self.add_event_and_print(name='T2RvR_Status', message='[Iteration={}|DUT={}|atten={}] Starting traffic on stations for {} seconds..'.
+                            format(i, dut, ddb, self.step_length_sec))
+                        try:
+                            if dut_total_counter > 5 and dut_total_fails/dut_total_counter > self.total_fail_threshold:
+                                self.add_event_and_print(name='T2RvR_DUTError', message='[Iteration={}|DUT={}|atten={}] Skipping DUT due to too many failures in total (>{}%)'.
+                                    format(i, dut, ddb, self.total_fail_threshold*100))
+                                skip_dut = True
                                 break
-                    finally:
-                        dut_total_counter += 1
-                        self.stop()
+                            else:
+                                # Increase timeout for first step
+                                if step == 0:
+                                    self.start_station_traffic(timeout_sec=360)
+                                else:
+                                    self.start_station_traffic()
+                        except ConnectionError:
+                            self.add_event_and_print(name='T2RvR_DUTError', message="Stations failed to get IPs")
+                            dut_fail_counter += 1
+                            dut_total_fails += 1
+
+                            if step == 0:
+                                self.add_event_and_print(name='T2RvR_DUTError', message='[Iteration={}|DUT={}|atten={}] Skipping DUT due to failure on first step'.
+                                    format(i, dut, ddb))
+                                skip_dut = True
+                                break
+
+                            # Give up this DUT if we've failed too many times in a row
+                            if dut_fail_counter > self.max_attempts_on_fail:
+                                self.add_event_and_print(name='T2RvR_DUTError', message='[Iteration={}|DUT={}|atten={}] Skipping DUT due to too many failures in a row ({})'.
+                                    format(i, dut, ddb, self.max_attempts_on_fail))
+                                skip_dut = True
+                                break
+                        else:  # Reset non-total fail counter if we succeed
+                            dut_fail_counter = 0
+                            step_end_ts = time.time() + self.step_length_sec + 5
+                            while True:
+                                print('Collecting stats...')
+                                self.collect_stats()
+                                time.sleep(0.5)
+                                if time.time() > step_end_ts:
+                                    break
+                        finally:
+                            dut_total_counter += 1
+                            self.stop()
 
     def stop(self):
         # Bring stations down
@@ -350,21 +387,15 @@ def main():
     parser.add_argument('-s', '--ssid', type=str, help='ssid for client')
     parser.add_argument('-pwd', '--passwd', type=str, help='password to connect to ssid')
     parser.add_argument('-sec', '--security', type=str, help='security')
-    parser.add_argument('-rad', '--radio', type=str, help='radio at which client will be connected')
-    #parser.add_argument()
+    parser.add_argument('-d', '--duts', help='comma-delimited list input of DUTs to test, use friendly names (e.g: L2, ASUS-AX58 etc)', type=str)
+    parser.add_argument('-r', '--radios', help='comma-delimited list input of radios to test on each DUT (wiphy0 and/or wiphy1)', type=str)
     args = parser.parse_args()
-    num_sta = 1
-    duts = ['L2']
-    station_list = LFUtils.port_name_series(prefix="sta",
-                                            start_id=0,
-                                            end_id=num_sta - 1,
-                                            padding_number=10000,
-                                            radio=args.radio)
-    obj = Tele2RateVersusRange(lfclient_host= args.host, lfclient_port=args.port, ssid=args.ssid , paswd=args.passwd, security=args.security, radio=args.radio, sta_list=station_list, duts=duts)
-    obj.precleanup()
-    obj.build()
-    obj.start()
+    rvr = Tele2RateVersusRange(lfclient_host= args.host, lfclient_port=args.port, ssid=args.ssid, paswd=args.passwd, security=args.security, radios=args.radios, duts=args.duts)
+    rvr.precleanup()
+    rvr.build()
+    rvr.start()
+    return rvr
 
 
 if __name__ == '__main__':
-    main()
+    rvr = main()
