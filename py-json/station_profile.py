@@ -529,6 +529,7 @@ class StationProfile:
             self.set_port_data["port"] = name  # for set_port calls.
             self.set_port_data["shelf"] = radio_shelf
             self.set_port_data["resource"] = radio_resource
+            self.set_port_data["dhcp_hostname"] = 'LANForge-' + str(radio_shelf) + '.' + str(radio_resource) + '.' + name
 
             add_sta_r.addPostData(self.add_sta_data)
             if debug:
