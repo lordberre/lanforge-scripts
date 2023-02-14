@@ -108,7 +108,48 @@ class CreateRvRAttenuator(Realm):
 
 
 class DUTController():
-    pass
+    """
+    # Basic power on/off loop
+    #!/bin/bash
+    #zap right
+    for ((i = 0 ; i < 200 ; i++)); do
+        echo $i
+        echo "$(mono net-pwrctrl.exe 192.168.0.54,75,77,rel,1,off,admin,anel >/dev/null)"
+        sleep 30
+        echo "$(mono net-pwrctrl.exe 192.168.0.54,75,77,rel,1,on,admin,anel >/dev/null)"
+        sleep 300
+    done
+    """
+    def __init__(self, ip):
+        self.ip = ip
+        # Connections matching powerctl panel per DUT
+        self.dut_to_port = {
+                'L2': 1,
+                'C4': 2,
+                }
+        self.set_dut(dut)
+
+    def power_ctl(self, cmd):
+        if cmd not in ['on', 'off']:
+            raise(TypeError)
+        if self.port is None:
+            print('Must run set_dut(dut_name) first.')
+            raise(TypeError)
+        subprocess.Popen(f'mono net-pwrctrl.exe {self.ip},75,77,rel,{self.port},{cmd},admin,anel >/dev/null', shell=True)
+
+    def power_off(self):
+        self.power_ctl('off')
+
+    def power_on(self):
+        self.power_ctl('on')
+
+    def set_dut(self, dut):
+        try:
+            self.port = self.dut_to_port[dut]
+        except KeyError as ke:
+            print(f'Invalid DUT: {dut}')
+            raise(ke)
+
 
 class Tele2RateVersusRange(LFCliBase):
     def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radios, duts, name_prefix="T2RvR", upstream="eth1", traffic_direction='downstream'):
@@ -128,6 +169,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.attenuator = CreateRvRAttenuator(host=self.host, port=self.port, serno='all', idx='all', val=955)
         self.num_sta = 1
         self.scenario_id = uuid.uuid4().hex[:8]
+        self.dut_controller = DUTController('192.168.0.54')
 
         # Set to locally track currently running endpoints
         self._running_endpoints = set()
