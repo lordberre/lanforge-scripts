@@ -25,6 +25,7 @@ from realm import Realm
 from datetime import datetime
 import json
 import uuid
+import subprocess
 
 if sys.version_info[0] != 3:
     logger.critical("This script requires Python 3")
@@ -127,7 +128,6 @@ class DUTController():
                 'L2': 1,
                 'C4': 2,
                 }
-        self.set_dut(dut)
 
     def power_ctl(self, cmd):
         if cmd not in ['on', 'off']:
@@ -135,12 +135,12 @@ class DUTController():
         if self.port is None:
             print('Must run set_dut(dut_name) first.')
             raise(TypeError)
-        subprocess.Popen(f'mono net-pwrctrl.exe {self.ip},75,77,rel,{self.port},{cmd},admin,anel >/dev/null', shell=True)
+        subprocess.Popen(f'mono /usr/local/bin/net-pwrctrl.exe {self.ip},75,77,rel,{self.port},{cmd},admin,anel >/dev/null', shell=True)
 
-    def power_off(self):
+    def power_off(self):  # Pwr off only selected DUT
         self.power_ctl('off')
 
-    def power_on(self):
+    def power_on(self):  # Pwr on only selected DUT
         self.power_ctl('on')
 
     def set_dut(self, dut):
@@ -149,6 +149,10 @@ class DUTController():
         except KeyError as ke:
             print(f'Invalid DUT: {dut}')
             raise(ke)
+
+    def power_off_all_duts():
+        for port in self.dut_to_port.values():
+            self.power_ctl('off')
 
 
 class Tele2RateVersusRange(LFCliBase):
@@ -169,7 +173,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.attenuator = CreateRvRAttenuator(host=self.host, port=self.port, serno='all', idx='all', val=955)
         self.num_sta = 1
         self.scenario_id = uuid.uuid4().hex[:8]
-        self.dut_controller = DUTController('192.168.0.54')
+        self.dut_ctl = DUTController('192.168.0.54')
 
         # Set to locally track currently running endpoints
         self._running_endpoints = set()
@@ -463,8 +467,11 @@ class Tele2RateVersusRange(LFCliBase):
             self.attenuator.iteration = iteration
             skip_dut = False
             for dut in self.duts:
+                self.dut_ctl.set_dut(dut)
                 if skip_dut:
+                    self.dut_ctl.power_off()
                     continue
+                self.dut_ctl.power_on()
                 dut_total_counter, dut_fail_counter, dut_total_fails = 0, 0, 0
                 for radio in self.radios:
                     self.configure_radio(radio)
@@ -529,6 +536,8 @@ class Tele2RateVersusRange(LFCliBase):
                             finally:
                                 dut_total_counter += 1
                                 self.stop(radio=radio, cx_direction=cx_direction)
+
+                self.dut_ctl.power_off()
 
     def stop(self, radio="wiphy0", cx_direction='downstream'):
         # Bring stations down
