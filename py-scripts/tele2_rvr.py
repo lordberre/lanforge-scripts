@@ -126,8 +126,11 @@ class DUTController():
         # Connections matching powerctl panel per DUT
         self.dut_to_port = {
                 'L2': 1,
-                'C4': 2,
+                'C2': 2,
+                'C4': 3,
+                # 'NetgearSwitch': 4,
                 }
+        self._dut = None
 
     def power_ctl(self, cmd):
         if cmd not in ['on', 'off']:
@@ -135,12 +138,15 @@ class DUTController():
         if self.port is None:
             print('Must run set_dut(dut_name) first.')
             raise(TypeError)
+        time.sleep(1)
         subprocess.Popen(f'mono /usr/local/bin/net-pwrctrl.exe {self.ip},75,77,rel,{self.port},{cmd},admin,anel >/dev/null', shell=True)
 
     def power_off(self):  # Pwr off only selected DUT
+        print(f'[DUTController] Powering OFF {self.get_dut()}!')
         self.power_ctl('off')
 
     def power_on(self):  # Pwr on only selected DUT
+        print(f'[DUTController] Powering ON {self.get_dut()}!')
         self.power_ctl('on')
 
     def set_dut(self, dut):
@@ -149,10 +155,17 @@ class DUTController():
         except KeyError as ke:
             print(f'Invalid DUT: {dut}')
             raise(ke)
+        self._dut = dut
+        print(f'[DUTController] Selected DUT: {self.get_dut()}!')
+    
+    def get_dut(self):
+        return self._dut
 
-    def power_off_all_duts():
-        for port in self.dut_to_port.values():
-            self.power_ctl('off')
+    def power_off_all_duts(self):
+        print(f'[DUTController] Powering OFF all DUTs!')
+        for dut, port in self.dut_to_port.items():
+            self.set_dut(dut)
+            self.power_off()
 
 
 class Tele2RateVersusRange(LFCliBase):
@@ -277,7 +290,6 @@ class Tele2RateVersusRange(LFCliBase):
                         port_data = self.json_get('/port/' + urlEntry)
                         port_map[entry['port']] = port_data
 
-
         return port_map
 
     def telemetry_post(self, data, debug=False):
@@ -371,6 +383,8 @@ class Tele2RateVersusRange(LFCliBase):
         # Also 20MHz (0 == 20, 1 == 40, 2 == 80, 3 == 160, 4 == 80+80)
         if radio == 'wiphy0':
             self.station_profiles[radio].mode = 5
+            self.station_profiles[radio].wifi_txo_data['txo_bw'] = 0  # This doesnt work. Need to set bandwidth using some other method
+        elif radio == 'wiphy1':
             self.station_profiles[radio].wifi_txo_data['txo_bw'] = 2
         print(f'Calling create on station_profiles[{radio}] with sta_names: {self.sta_list[radio]}')
         self.station_profiles[radio].create(radio=radio, sta_names_=self.sta_list[radio])
@@ -408,9 +422,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.json_post("/cli-json/load", data)
         time.sleep(5)
 
-    def build(self):
-        self.load_blank_database()
-
+    def flip_uplink(self):
         # Initiate the upstream port
         try:
             data = LFUtils.port_dhcp_up_request(self.resource, self.upstream)
@@ -420,8 +432,13 @@ class Tele2RateVersusRange(LFCliBase):
             print("LFUtils.port_dhcp_up_request didn't complete ")
             print("or the json_post failed either way {} did not set up dhcp so test may not pass data ".format(self.side_b))
 
+    def build(self):
+        self.load_blank_database()
+        self.flip_uplink()
+
         if self.attenuator is None:
             exit('Error: No attenuator detected')
+        self.attenuator.base_profile(minimal=False)
 
     def create_cx(self, traffic_direction='downstream'):
         requested_tput = 10000000000  # 10 Gbit/s
@@ -466,6 +483,7 @@ class Tele2RateVersusRange(LFCliBase):
             iteration = i + 1
             self.attenuator.iteration = iteration
             skip_dut = False
+            self.dut_ctl.power_off_all_duts()
             for dut in self.duts:
                 self.dut_ctl.set_dut(dut)
                 if skip_dut:
@@ -481,7 +499,7 @@ class Tele2RateVersusRange(LFCliBase):
                     if skip_dut:
                         break
 
-                    for step, ddb in enumerate(range(0, 50, self.attenuator.ddb_step_size)):
+                    for step, ddb in enumerate(range(0, 950, self.attenuator.ddb_step_size)):
                         if skip_dut:
                             break
                         if step != 0:
@@ -499,9 +517,9 @@ class Tele2RateVersusRange(LFCliBase):
                                     skip_dut = True
                                     break
                                 else:
-                                    # Increase timeout for first step
+                                    # Increase timeout for first step to account for the DUT booting up etc
                                     if step == 0:
-                                        self.start_station_traffic(radio=radio, timeout_sec=360, cx_direction=cx_direction)
+                                        self.start_station_traffic(radio=radio, timeout_sec=300, cx_direction=cx_direction)
                                     else:
                                         self.start_station_traffic(radio=radio, cx_direction=cx_direction)
                             except ConnectionError:
@@ -509,6 +527,14 @@ class Tele2RateVersusRange(LFCliBase):
                                 dut_fail_counter += 1
                                 dut_total_fails += 1
                                 cx_fail += 1
+
+                                if step == 0: # If it's the very first step for this DUT, we may have to flip the uplink sometimes
+                                    self.add_event_and_print(name='T2RvR_DUTError', message='[Iteration={}|DUT={}|atten={}] DUT Failed at initial step. Flipping upstream port and trying again..')
+                                    self.flip_uplink()
+                                    try:
+                                        self.start_station_traffic(radio=radio, cx_direction=cx_direction)
+                                    except ConnectionError:
+                                        pass
 
                                 # Give up this DUT if we've failed too many times in a row
                                 # If both directions are tested, only fail if at least both directions failed
