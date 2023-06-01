@@ -169,7 +169,7 @@ class DUTController():
 
 
 class Tele2RateVersusRange(LFCliBase):
-    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radios, duts, name_prefix="T2RvR", upstream="eth1", traffic_direction='downstream'):
+    def __init__(self, lfclient_host, lfclient_port, ssid, paswd, security, radios, duts, name_prefix="T2RvR", upstream="eth1", traffic_direction='downstream', quick_start=False):
         super().__init__(lfclient_host, lfclient_port)
         self.host = lfclient_host
         self.port = lfclient_port
@@ -187,6 +187,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.num_sta = 1
         self.scenario_id = uuid.uuid4().hex[:8]
         self.dut_ctl = DUTController('192.168.0.54')
+        self.quick_start = quick_start
 
         # Set to locally track currently running endpoints
         self._running_endpoints = set()
@@ -439,7 +440,7 @@ class Tele2RateVersusRange(LFCliBase):
 
         if self.attenuator is None:
             exit('Error: No attenuator detected')
-        self.attenuator.base_profile(minimal=False)
+        self.attenuator.base_profile(minimal=self.quick_start)
 
     def create_cx(self, traffic_direction='downstream'):
         requested_tput = 10000000000  # 10 Gbit/s
@@ -478,13 +479,14 @@ class Tele2RateVersusRange(LFCliBase):
         time.sleep(1)
  
     def start(self):
-        self.add_event_and_print(name='T2RvR_Status', message='<<<<<<<<<<< Starting T2RvR test for {} iterations on DUTs: {} on radios: {} >>>>>>>>>>>>'.
-            format(self.num_iterations, self.duts, self.radios))
+        self.add_event_and_print(name='T2RvR_Status', message='<<<<<<<<<<< Starting T2RvR test for {} iterations on DUTs: {} on radios: {} with upstream interface: {} >>>>>>>>>>>>'.
+            format(self.num_iterations, self.duts, self.radios, self.upstream))
         for i in range(self.num_iterations):
             iteration = i + 1
             self.attenuator.iteration = iteration
             skip_dut = False
-            self.dut_ctl.power_off_all_duts()
+            if not self.quick_start:
+                self.dut_ctl.power_off_all_duts()
             for dut in self.duts:
                 self.dut_ctl.set_dut(dut)
                 if skip_dut:
@@ -587,12 +589,14 @@ def main():
     parser.add_argument('-s', '--ssid', type=str, help='ssid for client')
     parser.add_argument('-pwd', '--passwd', type=str, help='password to connect to ssid')
     parser.add_argument('-sec', '--security', type=str, help='security')
+    parser.add_argument('-up', '--upstream_port', type=str, help='port in the Lanforge to use for upstream traffic (default: eth1)', default='eth1')
     parser.add_argument('-td', '--traffic_direction', type=str, help='traffic direction to test, must one of: "downstream", "upstream" or "both"')
+    parser.add_argument('-q', '--quick_start', help='Skip resetting attenuators and powering off DUTs on script startup', default=False, action='store_true')
     parser.add_argument('-d', '--duts', help='comma-delimited list input of DUTs to test, use friendly names (e.g: L2, ASUS-AX58 etc)', type=str)
     parser.add_argument('-r', '--radios', help='comma-delimited list input of radios to test on each DUT (wiphy0 and/or wiphy1)', type=str)
     args = parser.parse_args()
     rvr = Tele2RateVersusRange(lfclient_host= args.host, lfclient_port=args.port, ssid=args.ssid, paswd=args.passwd,
-        security=args.security, radios=args.radios, duts=args.duts, traffic_direction=args.traffic_direction)
+        security=args.security, radios=args.radios, duts=args.duts, traffic_direction=args.traffic_direction, upstream=args.upstream_port, quick_start=args.quick_start)
     rvr.precleanup()
     rvr.build()
     rvr.start()
