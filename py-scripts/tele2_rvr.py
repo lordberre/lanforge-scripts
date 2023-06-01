@@ -142,11 +142,11 @@ class DUTController():
         subprocess.Popen(f'mono /usr/local/bin/net-pwrctrl.exe {self.ip},75,77,rel,{self.port},{cmd},admin,anel >/dev/null', shell=True)
 
     def power_off(self):  # Pwr off only selected DUT
-        print(f'[DUTController] Powering OFF {self.get_dut()}!')
+        print(f'[DUTController][{str(datetime.now())}] Powering OFF {self.get_dut()}!')
         self.power_ctl('off')
 
     def power_on(self):  # Pwr on only selected DUT
-        print(f'[DUTController] Powering ON {self.get_dut()}!')
+        print(f'[DUTController][{str(datetime.now())}] Powering ON {self.get_dut()}!')
         self.power_ctl('on')
 
     def set_dut(self, dut):
@@ -162,7 +162,7 @@ class DUTController():
         return self._dut
 
     def power_off_all_duts(self):
-        print(f'[DUTController] Powering OFF all DUTs!')
+        print(f'[DUTController][{str(datetime.now())}] Powering OFF all DUTs!')
         for dut, port in self.dut_to_port.items():
             self.set_dut(dut)
             self.power_off()
@@ -220,7 +220,7 @@ class Tele2RateVersusRange(LFCliBase):
 
         self.create_station_profiles()
         self.num_iterations = 5  # Number of full iterations (0 -> 95 dB) to perform before quitting.
-        self.step_length_sec = 15  # Number of seconds to run traffic per attenuation step
+        self.step_length_sec = 30  # Number of seconds to run traffic per attenuation step
         self.max_attempts_on_fail = 3  # Number of times to retry an attenuation step before going to the next DUT or iteration
         self.total_fail_threshold = 0.90  # Percentage of tests in total that needs to fail before going to the next DUT or iteration
 
@@ -289,6 +289,7 @@ class Tele2RateVersusRange(LFCliBase):
                         urlEntry = entry['port'].replace('.', '/')
                         port_data = self.json_get('/port/' + urlEntry)
                         port_map[entry['port']] = port_data
+
 
         return port_map
 
