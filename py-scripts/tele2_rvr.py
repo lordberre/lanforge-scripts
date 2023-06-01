@@ -81,6 +81,12 @@ class CreateRvRAttenuator(Realm):
         self.attenuator_profile.atten_val = val
         self._build()
 
+    def get_current_active_attenuator(self):
+        return {'atten_serial': self.attenuator_profile.atten_serno, 'atten_id': self.attenuator_profile.atten_idx, 'atten_value': self.attenuator_profile.atten_val}
+
+    def get_all_current_attenuators(self):
+        pass  #  Only one attenuator is stored, but we can store all of em.. But only really useful if we can read the attenuators actual state
+
     def reset_all(self):
         self.defaults.create()
     
@@ -224,6 +230,7 @@ class Tele2RateVersusRange(LFCliBase):
         self.step_length_sec = 30  # Number of seconds to run traffic per attenuation step
         self.max_attempts_on_fail = 3  # Number of times to retry an attenuation step before going to the next DUT or iteration
         self.total_fail_threshold = 0.90  # Percentage of tests in total that needs to fail before going to the next DUT or iteration
+        self.initial_sta_timeout_sec = 300  # How long to wait for the stations in the very first step of a DUT iteration. Should be slightly higher to account for slow booting DUTS etc.
 
     
     def create_station_profiles(self):
@@ -353,6 +360,9 @@ class Tele2RateVersusRange(LFCliBase):
                 'layer3': [l3_data],
             }
             report = self.add_stats_metadata(report)
+
+            att_data = self.attenuator.get_current_active_attenuator()
+            report['attenuators'][att_data['atten_serial']] = att_data
             self.telemetry_post(report)
 
     def add_event_and_print(self, **args):
@@ -522,7 +532,7 @@ class Tele2RateVersusRange(LFCliBase):
                                 else:
                                     # Increase timeout for first step to account for the DUT booting up etc
                                     if step == 0:
-                                        self.start_station_traffic(radio=radio, timeout_sec=300, cx_direction=cx_direction)
+                                        self.start_station_traffic(radio=radio, timeout_sec=self.initial_sta_timeout_sec, cx_direction=cx_direction)
                                     else:
                                         self.start_station_traffic(radio=radio, cx_direction=cx_direction)
                             except ConnectionError:
