@@ -82,7 +82,7 @@ class CreateRvRAttenuator(Realm):
         self._build()
 
     def get_current_active_attenuator(self):
-        return {'atten_serial': self.attenuator_profile.atten_serno, 'atten_id': self.attenuator_profile.atten_idx, 'atten_value': self.attenuator_profile.atten_val}
+        return {'atten_serial': self.attenuator_profile.atten_serno, 'atten_port': self.attenuator_profile.atten_idx, 'atten_value_ddb': self.attenuator_profile.atten_val}
 
     def get_all_current_attenuators(self):
         pass  #  Only one attenuator is stored, but we can store all of em.. But only really useful if we can read the attenuators actual state
@@ -149,7 +149,7 @@ class DUTController():
 
     def power_off(self):  # Pwr off only selected DUT
         print(f'[DUTController][{str(datetime.now())}] Powering OFF {self.get_dut()}!')
-        self.power_ctl('off')
+        pass  # self.power_ctl('off')  # TEMP to not reboot C4 without upstream!!!!!!!!!!!!!
 
     def power_on(self):  # Pwr on only selected DUT
         print(f'[DUTController][{str(datetime.now())}] Powering ON {self.get_dut()}!')
@@ -197,6 +197,10 @@ class Tele2RateVersusRange(LFCliBase):
 
         # Set to locally track currently running endpoints
         self._running_endpoints = set()
+        self._running_dut = 'N/A'
+        self._running_radio = 'N/A'
+        self._running_direction = 'N/A'
+        self._running_iteration = 0
 
         # Cross endpoints for each client traffic direction
         self.traffic_direction = traffic_direction
@@ -230,9 +234,14 @@ class Tele2RateVersusRange(LFCliBase):
         self.step_length_sec = 30  # Number of seconds to run traffic per attenuation step
         self.max_attempts_on_fail = 3  # Number of times to retry an attenuation step before going to the next DUT or iteration
         self.total_fail_threshold = 0.90  # Percentage of tests in total that needs to fail before going to the next DUT or iteration
-        self.initial_sta_timeout_sec = 300  # How long to wait for the stations in the very first step of a DUT iteration. Should be slightly higher to account for slow booting DUTS etc.
+        self.initial_sta_timeout_sec = 30  # How long to wait for the stations in the very first step of a DUT iteration. Should be slightly higher to account for slow booting DUTS etc.
 
-    
+    def update_running_info(self, dut, radio, direction, iteration):
+        self._running_dut = dut
+        self._running_radio = radio
+        self._running_direction = direction
+        self._running_iteration = iteration
+
     def create_station_profiles(self):
         self.sta_list = {radio: [] for radio in self.radios}
         self.station_profiles = dict()
@@ -329,6 +338,10 @@ class Tele2RateVersusRange(LFCliBase):
             'total_fail_threshold': self.total_fail_threshold,
             'traffic_direction': self.traffic_direction,
             'upstream': self.full_upstream_path,
+            'running_dut': self._running_dut,
+            'running_radio': self._running_radio,
+            'running_direction': self._running_direction,
+            'running_iteration': self._running_iteration,
         }
         return data
 
@@ -360,9 +373,8 @@ class Tele2RateVersusRange(LFCliBase):
                 'layer3': [l3_data],
             }
             report = self.add_stats_metadata(report)
-
             att_data = self.attenuator.get_current_active_attenuator()
-            report['attenuators'][att_data['atten_serial']] = att_data
+            report['attenuators'] = {att_data['atten_serial']: att_data}
             self.telemetry_post(report)
 
     def add_event_and_print(self, **args):
@@ -495,7 +507,7 @@ class Tele2RateVersusRange(LFCliBase):
             iteration = i + 1
             self.attenuator.iteration = iteration
             skip_dut = False
-            if not self.quick_start:
+            if not iteration == 1 and not self.quick_start:
                 self.dut_ctl.power_off_all_duts()
             for dut in self.duts:
                 self.dut_ctl.set_dut(dut)
@@ -523,6 +535,7 @@ class Tele2RateVersusRange(LFCliBase):
                         
                         cx_fail = 0
                         for cx_direction in self.endpoints.keys():
+                            self.update_running_info(dut, radio, cx_direction, i)
                             try:
                                 if dut_total_counter > 5 and dut_total_fails/dut_total_counter > self.total_fail_threshold:
                                     self.add_event_and_print(name='T2RvR_DUTError', message='[Iteration={}|DUT={}|atten={}] Skipping DUT due to too many failures in total (>{}%)'.
