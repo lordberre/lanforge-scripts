@@ -48,7 +48,7 @@ SERVICE_TYPES = {
          "active": False
     },
     "medium-ds-stream": {
-        "active": True,
+        "active": False,
         "bitrate_ds_min": 10000000,
         "bitrate_ds_max": 10000000,
         "bitrate_us_min": 56000,
@@ -214,7 +214,7 @@ class WiFiProblemsTest(Realm):
 
         # Config
         self.seconds_per_atten_step = 30  # If no noise generator is present
-        self.seconds_per_noise_step = 1800
+        self.seconds_per_noise_step = 900
 
         if test_run:
             if self.noise_generator is not None:
@@ -503,7 +503,7 @@ class WiFiProblemsTest(Realm):
                 print('Successfully loaded NoiseGenerator')
 
         #### Start the test
-        test_duration_sec = 1e9
+        test_duration_sec = 259200  # Full restart every 72h. This is to avoid deadlocks in LANForge.. Keep in mind that the problems in the dataset will be unbalanced as a result.
         error_count, iteration = 0, 0
         start = time.time()
 
